@@ -23,7 +23,7 @@ install:
 before_script:
   - psql -c 'create database travis_ci_test;' -U postgres
 
-script: "./postgresqltuner.pl --host=localhost --user=postgres --database==travis_ci_test"
+script: "./postgresqltuner.pl --host=localhost --user=postgres --database=travis_ci_test"
 
 # branches:
 #   only:
