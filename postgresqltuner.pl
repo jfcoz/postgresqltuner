@@ -11,8 +11,8 @@ my $script_version="0.0.2";
 my $script_name="postgresqltuner.pl";
 
 my $host=undef;
-my $username="root";
-my $password=undef;
+my $username='';
+my $password='';
 my $database="template1";
 my $port=5432;
 my $help=0;
@@ -121,22 +121,22 @@ my $settings=db_select_all_hashref("select * from pg_settings","name");
 {
 	### Heap hit rate
 	{
-		my $shared_buffer_heap_hit_rate=db_select_one_value("select sum(heap_blks_hit)*100/(sum(heap_blks_read)+sum(heap_blks_hit)) from pg_statio_all_tables ;");
+		my $shared_buffer_heap_hit_rate=db_select_one_value("select sum(heap_blks_hit)*100/(sum(heap_blks_read)+sum(heap_blks_hit)+1) from pg_statio_all_tables ;");
 		report_info("shared_buffer_heap_hit_rate: $shared_buffer_heap_hit_rate");
 	}
 	### TOAST hit rate
 	{
-		my $shared_buffer_toast_hit_rate=db_select_one_value("select sum(toast_blks_hit)*100/(sum(toast_blks_read)+sum(toast_blks_hit)) from pg_statio_all_tables ;");
+		my $shared_buffer_toast_hit_rate=db_select_one_value("select sum(toast_blks_hit)*100/(sum(toast_blks_read)+sum(toast_blks_hit)+1) from pg_statio_all_tables ;");
 		report_info("shared_buffer_toast_hit_rate: $shared_buffer_toast_hit_rate");
 	}
 	# Tidx hit rate
 	{
-		my $shared_buffer_tidx_hit_rate=db_select_one_value("select sum(tidx_blks_hit)*100/(sum(tidx_blks_read)+sum(tidx_blks_hit)) from pg_statio_all_tables ;");
+		my $shared_buffer_tidx_hit_rate=db_select_one_value("select sum(tidx_blks_hit)*100/(sum(tidx_blks_read)+sum(tidx_blks_hit)+1) from pg_statio_all_tables ;");
 		report_info("shared_buffer_tidx_hit_rate: $shared_buffer_tidx_hit_rate");
 	}
 	# Idx hit rate
 	{
-		my $shared_buffer_idx_hit_rate=db_select_one_value("select sum(idx_blks_hit)*100/(sum(idx_blks_read)+sum(idx_blks_hit)) from pg_statio_all_tables ;");
+		my $shared_buffer_idx_hit_rate=db_select_one_value("select sum(idx_blks_hit)*100/(sum(idx_blks_read)+sum(idx_blks_hit)+1) from pg_statio_all_tables ;");
 		report_info("shared_buffer_idx_hit_rate: $shared_buffer_idx_hit_rate");
 		if ($shared_buffer_idx_hit_rate > 99.99) {
 			report_info("shared buffer idx hit rate too high. You can reducte shared_buffer if you need");
