@@ -1,0 +1,40 @@
+language: "perl"
+perl:
+  - "5.22"
+  - "5.20"
+  - "5.18"
+  - "5.16"
+  - "5.14"
+  - "5.12"
+
+services:
+  - postgresql
+
+addons:
+  postgresql: "9.4"
+
+before_install:
+  - sudo apt-get update -q
+  - sudo apt-get install -y libdbd-pg-perl
+
+install:
+  - true
+
+before_script:
+  - psql -c 'create database travis_ci_test;' -U postgres
+
+script: "./postgresqltuner.pl --host=postgresql --user=postgres --password='' --database==travis_ci_test"
+
+# branches:
+#   only:
+#     - master
+
+# notifications:
+#   recipients:
+#     - 
+#   email:
+#     on_success: change
+#     on_failure: always
+
+# env:
+
