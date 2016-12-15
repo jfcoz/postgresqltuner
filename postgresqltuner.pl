@@ -11,8 +11,8 @@ my $script_version="0.0.2";
 my $script_name="postgresqltuner.pl";
 
 my $host=undef;
-my $username="root";
-my $password=undef;
+my $username='';
+my $password='';
 my $database="template1";
 my $port=5432;
 my $help=0;
