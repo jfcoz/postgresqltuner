@@ -54,11 +54,11 @@ postgresqltuner.pl --host=dbhost --database=testdb --user=username --password=qw
 
  - Via network :
 ```
-docker run -it --rm postgresqltuner --host=dbhost --user=username --password=pass --database=testdb
+docker run -it --rm jfcoz/postgresqltuner --host=dbhost --user=username --password=pass --database=testdb
 ```
  - Via docker link :
 ```
-docker run -it --rm --link your-postgresql-container:dbhost postgresqltuner --host=dbhost --user=username --password=pass --database=testdb
+docker run -it --rm --link your-postgresql-container:dbhost jfcoz/postgresqltuner --host=dbhost --user=username --password=pass --database=testdb
 ```
 
 
