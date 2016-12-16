@@ -40,14 +40,23 @@ Connecting to dbhost:5432 database testdb with user username...
 
 need perl with module `DBD::Pg`
 
-On Debian :
+- On Debian or derivated :
 ```
-apt-get install -y libdbd-pg-perl
+apt-get install libdbd-pg-perl
+```
+- On Fedora or deriavated :
+```
+yum install perl-DBD-Pg
 ```
 
 Dowload and run script :
+- Via network :
 ```
 postgresqltuner.pl --host=dbhost --database=testdb --user=username --password=qwerty
+```
+- Via unix socket as postgres sytem user :
+```
+postgres$ postgresqltuner.pl --host=/var/run/postgresql  # PostgreSQL socket directory
 ```
 
 ### On docker

@@ -10,7 +10,7 @@ use Term::ANSIColor;
 my $script_version="0.0.2";
 my $script_name="postgresqltuner.pl";
 
-my $host=undef;
+my $host='/var/run/postgresql';
 my $username='';
 my $password='';
 my $database="template1";
@@ -37,7 +37,7 @@ usage(1) if (!defined($host) or !defined($username) or !defined($password));
 
 sub usage {
 	my $return=shift;
-	print STDERR "usage: $script_name --host hostname --user username --password password --database database --port port\n";
+	print STDERR "usage: $script_name --host [ hostname | /var/run/postgresql ] [--user username] [--password password] [--database database] [--port port]\n";
 	exit $return;
 }
 
