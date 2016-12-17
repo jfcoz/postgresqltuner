@@ -59,15 +59,22 @@ postgresqltuner.pl --host=dbhost --database=testdb --user=username --password=qw
 postgres$ postgresqltuner.pl --host=/var/run/postgresql  # PostgreSQL socket directory
 ```
 
-### On docker
+### With docker
 
  - Via network :
 ```
 docker run -it --rm jfcoz/postgresqltuner --host=dbhost --user=username --password=pass --database=testdb
+```
+ - Via network with ssh access :
+```
+docker run -it --rm -v $HOME/.ssh:/root/.ssh jfcoz/postgresqltuner --host=dbhost --user=username --password=pass --database=testdb
 ```
  - Via docker link :
 ```
 docker run -it --rm --link your-postgresql-container:dbhost jfcoz/postgresqltuner --host=dbhost --user=username --password=pass --database=testdb
 ```
 
+## SSH
+
+When using it remotly, postgresqltuner.pl will use ssh to collect OS informations. You must configure ssh to connect to remote host with private key authentication.
 
