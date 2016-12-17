@@ -63,9 +63,17 @@ print "Connecting to $host:$port database $database with user $username...\n";
 my $dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host",$username,$password,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
 
 # Collect datas
+my $users=select_all_hashref("select * from pg_user","usename");
+my $i_am_super=$users->{$username}->{usesuper};
 my $settings=select_all_hashref("select * from pg_settings","name");
+my @Extensions=select_one_column("select extname from pg_extension");
 my $os={};
 
+if ($i_am_super) {
+	print_report_ok("User used for report have super rights");
+} else {
+	print_report_warn("User used for report does not have super rights. Report will be incomplete");
+}
 
 # Report
 print_header_1("OS information");
@@ -129,6 +137,13 @@ print_header_1("General instance informations");
 	my @Databases=select_one_column("SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn;");
 	print_report_info("Database count (except templates): ".scalar(@Databases));
 	print_report_info("Database list (except templates): @Databases");
+}
+
+## Extensions
+{
+	print_header_2("Extensions");
+	print_report_info("Number of activated extensions : ".scalar(@Extensions));
+	print_report_info("Activated extensions : @Extensions");
 }
 
 ## Connections and Memory
