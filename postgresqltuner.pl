@@ -73,6 +73,10 @@ print_header_1("OS information");
 {
 	if ($host =~ /^\//) {
 		$os_cmd_prefix='';
+	} elsif ($host =~ /^localhost$/) {
+		$os_cmd_prefix='';
+	} elsif ($host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+		$os_cmd_prefix='';
 	} elsif ($host =~ /^[a-zA-Z0-9.-]+$/) {
 		$os_cmd_prefix="ssh $host ";
 	} else {
