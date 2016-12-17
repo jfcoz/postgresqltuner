@@ -26,6 +26,7 @@ my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
 my $day_s=24*$hour_s;
+my $os_cmd_prefix='';
 
 my $host='/var/run/postgresql';
 my $username='';
@@ -63,11 +64,33 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host",$username,$password,
 
 # Collect datas
 my $settings=select_all_hashref("select * from pg_settings","name");
+my $os={};
 
 
 # Report
+print_header_1("OS information");
 
-#use Data::Dumper; print Dumper($settings);
+{
+	if ($host =~ /^\//) {
+		$os_cmd_prefix='';
+	} elsif ($host =~ /^[a-zA-Z0-9.-]+$/) {
+		$os_cmd_prefix="ssh $host ";
+	} else {
+		die("Invalid host $host");
+	}
+	if (! defined(os_cmd("true"))) {
+		print_report_unknown("Unable to connect via ssh to $host. Please configure your ssh client to allow to connect to $host with key authentification, and accept key at first connection. For now you will not have OS information");
+	} else {
+		my $os_version=os_cmd("cat /etc/issue");
+		$os_version=~s/\n//g;
+		print_report_info("OS: $os_version");
+		my $os_mem=os_cmd("free -b");
+		($os->{mem_total},$os->{mem_used},$os->{mem_free},$os->{mem_shared},$os->{mem_buffers},$os->{mem_cached})=($os_mem =~ /Mem:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
+		($os->{swap_total},$os->{swap_used},$os->{swap_free})=($os_mem =~ /Swap:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
+		print_report_info("OS total memory: ".format_size($os->{mem_total}));
+	}
+}
+
 print_header_1("General instance informations");
 
 ## Version
@@ -80,7 +103,7 @@ print_header_1("General instance informations");
 	} elsif ($v1 == 9 and $v2 < 6) {
 		print_report_warn("You are using version $version which is not the latest version");
 	} elsif ($v1 == 9 and $v2 == 6) {
-		print_print_report_ok("You are using last $version");
+		print_report_ok("You are using last $version");
 	} else {
 		print_report_bad("Version $version is unknown to $script_name $script_version : you may use an old version of this script");
 	}
@@ -128,19 +151,33 @@ print_header_1("General instance informations");
 
 	print_header_2("Memory usage");
 	my $work_mem=get_setting('work_mem');
-	print_report_info("work_mem (per connection): ".size_pretty($work_mem));
+	print_report_info("work_mem (per connection): ".format_size($work_mem));
 	my $shared_buffers=get_setting('shared_buffers');
-	print_report_info("shared_buffers: ".size_pretty($shared_buffers));
+	print_report_info("shared_buffers: ".format_size($shared_buffers));
 	my $max_memory=$shared_buffers+$max_connections*$work_mem;
-	print_report_info("Max memory usage (shared_buffers + max_connections*work_mem): ".size_pretty($max_memory));
-	print_report_todo("compare to system memory");
+	print_report_info("Max memory usage (shared_buffers + max_connections*work_mem): ".format_size($max_memory));
+	if (! defined($os->{mem_total})) {
+		print_report_unknown("OS total mem unknown : unable to analyse PostgreSQL memory usage");
+	} else {
+		my $percent_postgresql_max_memory=$max_memory*100/$os->{mem_total};
+		print_report_info("PostgreSQL maximum memory usage: ".format_percent($percent_postgresql_max_memory)." of system RAM");
+		if ($percent_postgresql_max_memory > 100) {
+			print_report_bad("Max possible memory usage for PostgreSQL is more than system total RAM. Add more RAM or reduce PostgreSQL memory");
+		} elsif ($percent_postgresql_max_memory > 80) {
+			print_report_warn("Max possible memory usage for PostgreSQL is more than 90% of system total RAM.");
+		} elsif ($percent_postgresql_max_memory < 60) {
+			print_report_warn("Max possible memory usage for PostgreSQL is less than 60% of system total RAM. On a dedicated host you could increase PostgreSQL buffers to optimize performances.");			
+		} else {
+			print_report_ok("Max possible memory usage for PostgreSQL is good");
+		}
+	}
 }
 
 ## Autovacuum
 {
 	print_header_2("Autovacuum");
 	if (get_setting('autovacuum') eq 'on') {
-		print_print_report_ok('autovacuum is activated.');
+		print_report_ok('autovacuum is activated.');
 	} else {
 		print_report_bad('autovacuum is not activated. This is bad except if you known what you do.');
 	}
@@ -153,7 +190,7 @@ print_header_1("General instance informations");
 	if ($checkpoint_completion_target < 0.5) {
 		print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is lower that default(0,5)");
 	} elsif ($checkpoint_completion_target >= 0.5 and $checkpoint_completion_target <= 0.9) {
-		print_print_report_ok("checkpoint_completion_target($checkpoint_completion_target) OK");
+		print_report_ok("checkpoint_completion_target($checkpoint_completion_target) OK");
 	} elsif ($checkpoint_completion_target > 0.9 and $checkpoint_completion_target < 1) {
 		print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is too near to 1");
 	} else {
@@ -166,7 +203,7 @@ print_header_1("General instance informations");
 	print_header_2("Disk access");
 	my $fsync=get_setting('fsync');
 	if ($fsync eq 'on') {
-		print_print_report_ok("fsync is on");
+		print_report_ok("fsync is on");
 	} else {
 		print_report_bad("fsync is off. You can loss data in case of crash");
 	}
@@ -193,9 +230,9 @@ print_header_1("Database information for database $database");
 	my $sum_index_size=$sum_total_relation_size-$sum_relation_size;
 	my $relation_percent=$sum_relation_size*100/$sum_total_relation_size;
 	my $index_percent=$sum_index_size*100/$sum_total_relation_size;
-	print_report_info("Database $database total size : ".size_pretty($sum_total_relation_size));
-	print_report_info("Database $database tables size : ".size_pretty($sum_relation_size)." (".format_percent($relation_percent)."%)");
-	print_report_info("Database $database indexes size : ".size_pretty($sum_index_size)." (".format_percent($index_percent)."%)");
+	print_report_info("Database $database total size : ".format_size($sum_total_relation_size));
+	print_report_info("Database $database tables size : ".format_size($sum_relation_size)." (".format_percent($relation_percent)."%)");
+	print_report_info("Database $database indexes size : ".format_size($sum_index_size)." (".format_percent($index_percent)."%)");
 }
 
 
@@ -225,7 +262,7 @@ print_header_1("Database information for database $database");
 		if ($shared_buffer_idx_hit_rate > 99.99) {
 			print_report_info("shared buffer idx hit rate too high. You can reducte shared_buffer if you need");
 		} elsif ($shared_buffer_idx_hit_rate>98) {
-			print_print_report_ok("Shared buffer idx hit rate is very good");
+			print_report_ok("Shared buffer idx hit rate is very good");
 		} elsif ($shared_buffer_idx_hit_rate>90) {
 			print_report_warn("Shared buffer idx hit rate is quite good. Increase shared_buffer memory to increase hit rate");
 		} else {
@@ -283,12 +320,13 @@ sub select_one_column {
 	return @Result;
 }
 
-sub print_print_report_ok	{ print_report('ok'     ,shift); }
-sub print_report_warn		{ print_report('warn'   ,shift); }
-sub print_report_bad		{ print_report('bad'    ,shift); }
-sub print_report_info		{ print_report('info'   ,shift); }
-sub print_report_todo		{ print_report('todo'   ,shift); }
+sub print_report_ok		{ print_report('ok'	,shift); }
+sub print_report_warn		{ print_report('warn'	,shift); }
+sub print_report_bad		{ print_report('bad'	,shift); }
+sub print_report_info		{ print_report('info'	,shift); }
+sub print_report_todo		{ print_report('todo'	,shift); }
 sub print_report_unknown	{ print_report('unknown',shift); }
+sub print_report_debug		{ print_report('debug'	,shift); }
 
 sub print_report {
 	my ($type,$message)=@_;
@@ -315,6 +353,10 @@ sub print_report {
 	} elsif ($type eq "unknown") {
 		print color('cyan');
 		print "[UNKNOWN] ";
+		print color('reset');
+	} elsif ($type eq "debug") {
+		print color('magenta');
+		print "[DEBUG] ";
 		print color('reset');
 	} else {
 		print STDERR "ERROR: bad report type $type\n";
@@ -358,7 +400,7 @@ sub get_setting {
 	}
 }
 
-sub size_pretty {
+sub format_size {
 	my $size=shift;
         my @units=('','K','M','G','T','P');
         my $unit_index=0;
@@ -395,4 +437,15 @@ sub format_epoch_to_time {
 	}
 	$time.=' '.sprintf("%02d",$epoch).'s';
 	return $time;
+}
+
+sub os_cmd {
+	my $command=$os_cmd_prefix.shift;
+	my $result=`$command 2>&1`;
+	if ( $? == 0 ) {
+		return $result;
+	} else {
+		warn("Command $command failed");
+		return undef;
+	}
 }
