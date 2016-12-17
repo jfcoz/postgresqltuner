@@ -166,7 +166,7 @@ print_header_1("General instance informations");
 		} elsif ($percent_postgresql_max_memory > 80) {
 			print_report_warn("Max possible memory usage for PostgreSQL is more than 90% of system total RAM.");
 		} elsif ($percent_postgresql_max_memory < 60) {
-			print_report_warn("Max possible memory usage for PostgreSQL is less than 60% of system total RAM. On a dedicated host you could increase PostgreSQL buffers to optimize performances.");			
+			print_report_warn("Max possible memory usage for PostgreSQL is less than 60% of system total RAM. On a dedicated host you can increase PostgreSQL buffers to optimize performances.");			
 		} else {
 			print_report_ok("Max possible memory usage for PostgreSQL is good");
 		}
