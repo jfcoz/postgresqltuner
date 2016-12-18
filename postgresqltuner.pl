@@ -153,7 +153,7 @@ print_header_1("General instance informations");
 	print_report_info("max_connections: $max_connections");
 	my $current_connections=select_one_value("select count(1) from pg_stat_activity");
 	my $current_connections_percent=$current_connections*100/$max_connections;
-	print_report_info("current used connections: $current_connections (".format_percent($current_connections_percent)."%)");
+	print_report_info("current used connections: $current_connections (".format_percent($current_connections_percent).")");
 	if ($current_connections_percent > 70) {
 		print_report_warn("You are using more than 70% or your connection. Increase max_connections before saturation of connection slots");
 	} elsif ($current_connections_percent > 90) {
@@ -250,8 +250,8 @@ print_header_1("Database information for database $database");
 	my $relation_percent=$sum_relation_size*100/$sum_total_relation_size;
 	my $index_percent=$sum_index_size*100/$sum_total_relation_size;
 	print_report_info("Database $database total size : ".format_size($sum_total_relation_size));
-	print_report_info("Database $database tables size : ".format_size($sum_relation_size)." (".format_percent($relation_percent)."%)");
-	print_report_info("Database $database indexes size : ".format_size($sum_index_size)." (".format_percent($index_percent)."%)");
+	print_report_info("Database $database tables size : ".format_size($sum_relation_size)." (".format_percent($relation_percent).")");
+	print_report_info("Database $database indexes size : ".format_size($sum_index_size)." (".format_percent($index_percent).")");
 }
 
 
@@ -421,7 +421,7 @@ sub get_setting {
 
 sub format_size {
 	my $size=shift;
-        my @units=('','K','M','G','T','P');
+        my @units=('B','KB','MB','GB','TB','PB');
         my $unit_index=0;
         return 0 if !defined($size);
         while ($size>1024) {
@@ -433,7 +433,7 @@ sub format_size {
 
 sub format_percent {
 	my $value=shift;
-	return sprintf("%.2f",$value);
+	return sprintf("%.2f%%",$value);
 }
 
 sub format_epoch_to_time {
