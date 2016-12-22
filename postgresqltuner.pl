@@ -245,12 +245,15 @@ print_header_1("Database information for database $database");
 {
 	print_header_2("Database size");
 	my $sum_total_relation_size=select_one_value("select sum(pg_total_relation_size(schemaname||'.'||tablename)) from pg_tables");
-	my $sum_relation_size=select_one_value("select sum(pg_relation_size(schemaname||'.'||tablename)) from pg_tables");
-	my $sum_index_size=$sum_total_relation_size-$sum_relation_size;
-	my $relation_percent=$sum_relation_size*100/$sum_total_relation_size;
+	my $sum_table_size=select_one_value("select sum(pg_table_size(schemaname||'.'||tablename)) from pg_tables");
+	my $sum_index_size=$sum_total_relation_size-$sum_table_size;
+	#print_report_debug("sum_total_relation_size: $sum_total_relation_size");
+	#print_report_debug("sum_table_size: $sum_table_size");
+	#print_report_debug("sum_index_size: $sum_index_size");
+	my $table_percent=$sum_table_size*100/$sum_total_relation_size;
 	my $index_percent=$sum_index_size*100/$sum_total_relation_size;
 	print_report_info("Database $database total size : ".format_size($sum_total_relation_size));
-	print_report_info("Database $database tables size : ".format_size($sum_relation_size)." (".format_percent($relation_percent).")");
+	print_report_info("Database $database tables size : ".format_size($sum_table_size)." (".format_percent($table_percent).")");
 	print_report_info("Database $database indexes size : ".format_size($sum_index_size)." (".format_percent($index_percent).")");
 }
 
