@@ -290,6 +290,20 @@ print_header_1("Database information for database $database");
 	}
 }
 
+## Indexes
+{
+	print_header_2("Indexes");
+	# Invalid indexes
+	{
+		my @Invalid_indexes=select_one_column("select relname from pg_index join pg_class on indexrelid=oid where indisvalid=false");
+		if (@Invalid_indexes > 0) {
+			print_report_bad("There are invalid indexes in the database : @Invalid_indexes");
+		} else {
+			print_report_ok("No invalid indexes");
+		}
+	}
+}
+
 
 $dbh->disconnect();
 exit(0);
@@ -350,38 +364,23 @@ sub print_report_debug		{ print_report('debug'	,shift); }
 sub print_report {
 	my ($type,$message)=@_;
 	if ($type eq "ok") {
-		print color('green');
-		print "[OK]      ";
-		print color('reset');
+		print STDOUT color('green')  ."[OK]      ".color('reset').$message."\n";
 	} elsif ($type eq "warn") {
-		print color('yellow');
-		print "[WARN]    ";
-		print color('reset');
+		print STDOUT color('yellow') ."[WARN]    ".color('reset').$message."\n";
 	} elsif ($type eq "bad") {
-		print color('red');
-		print "[BAD]     ";
-		print color('reset');
+		print STDERR color('red')    ."[BAD]     ".color('reset').$message."\n";
 	} elsif ($type eq "info") {
-		print color('blue');
-		print "[INFO]    ";
-		print color('reset');
+		print STDOUT color('blue')   ."[INFO]    ".color('reset').$message."\n";
 	} elsif ($type eq "todo") {
-		print color('magenta');
-		print "[TODO]    ";
-		print color('reset');
+		print STDERR color('magenta')."[TODO]    ".color('reset').$message."\n";
 	} elsif ($type eq "unknown") {
-		print color('cyan');
-		print "[UNKNOWN] ";
-		print color('reset');
+		print STDOUT color('cyan')   ."[UNKNOWN] ".color('reset').$message."\n";
 	} elsif ($type eq "debug") {
-		print color('magenta');
-		print "[DEBUG] ";
-		print color('reset');
+		print STDERR color('magenta')."[DEBUG]   ".color('reset').$message."\n";
 	} else {
 		print STDERR "ERROR: bad report type $type\n";
 		exit 1;
 	}
-	print "$message\n";
 }
 
 sub print_header_1 { print_header(1,shift); }
