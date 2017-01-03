@@ -53,6 +53,9 @@ Connecting to dbhost:5432 database testdb with user username...
 [INFO]    shared_buffer_tidx_hit_rate: 98.08
 [INFO]    shared_buffer_idx_hit_rate: 96.71
 [WARN]    Shared buffer idx hit rate is quite good. Increase shared_buffer memory to increase hit rate
+-----  Indexes  -----
+[OK]      No invalid indexes
+
 ```
 
 ## Use it

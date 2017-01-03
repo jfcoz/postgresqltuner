@@ -63,9 +63,17 @@ print "Connecting to $host:$port database $database with user $username...\n";
 my $dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host",$username,$password,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
 
 # Collect datas
+my $users=select_all_hashref("select * from pg_user","usename");
+my $i_am_super=$users->{$username}->{usesuper};
 my $settings=select_all_hashref("select * from pg_settings","name");
+my @Extensions=select_one_column("select extname from pg_extension");
 my $os={};
 
+if ($i_am_super) {
+	print_report_ok("User used for report have super rights");
+} else {
+	print_report_warn("User used for report does not have super rights. Report will be incomplete");
+}
 
 # Report
 print_header_1("OS information");
@@ -97,11 +105,12 @@ print_header_1("OS information");
 
 print_header_1("General instance informations");
 
+my ($v1,$v2,$v3);
 ## Version
 {
 	print_header_2("Version");
 	my $version=get_setting('server_version');
-	my ($v1,$v2,$v3)=split(/\./,$version);
+	($v1,$v2,$v3)=split(/\./,$version);
 	if ($v1<9) {
 		print_report_bad("You are using version $version which is very old");
 	} elsif ($v1 == 9 and $v2 < 6) {
@@ -131,6 +140,13 @@ print_header_1("General instance informations");
 	print_report_info("Database list (except templates): @Databases");
 }
 
+## Extensions
+{
+	print_header_2("Extensions");
+	print_report_info("Number of activated extensions : ".scalar(@Extensions));
+	print_report_info("Activated extensions : @Extensions");
+}
+
 ## Connections and Memory
 {
 	print_header_2("Connection information");
@@ -138,7 +154,7 @@ print_header_1("General instance informations");
 	print_report_info("max_connections: $max_connections");
 	my $current_connections=select_one_value("select count(1) from pg_stat_activity");
 	my $current_connections_percent=$current_connections*100/$max_connections;
-	print_report_info("current used connections: $current_connections (".format_percent($current_connections_percent)."%)");
+	print_report_info("current used connections: $current_connections (".format_percent($current_connections_percent).")");
 	if ($current_connections_percent > 70) {
 		print_report_warn("You are using more than 70% or your connection. Increase max_connections before saturation of connection slots");
 	} elsif ($current_connections_percent > 90) {
@@ -174,6 +190,27 @@ print_header_1("General instance informations");
 		} else {
 			print_report_ok("Max possible memory usage for PostgreSQL is good");
 		}
+	}
+}
+
+## Two phase commit
+{
+	print_header_2("Two phase commit");
+	if (($v1>=9) and ($v2>=2)) {
+		my $prepared_xact_count=select_one_value("select count(1) from pg_prepared_xacts");
+		if ($prepared_xact_count == 0) {
+			print_report_ok("Currently no two phase commit transactions");
+		} else {
+			print_report_warn("There are currently $prepared_xact_count two phase commit prepared transactions. If they are too long they can lock objects.");
+			my $prepared_xact_lock_count=select_one_value("select count(1) from pg_locks where transactionid in (select transaction from pg_prepared_xacts)");
+			if ($prepared_xact_lock_count > 0) {
+				print_report_bad("Two phase commit transactions have $prepared_xact_lock_count locks !");
+			} else {
+				print_report_ok("No locks for theses $prepared_xact_count transactions");
+			}
+		}
+	} else {
+		print_report_warn("This version does not yet support two phase commit");
 	}
 }
 
@@ -230,13 +267,16 @@ print_header_1("Database information for database $database");
 {
 	print_header_2("Database size");
 	my $sum_total_relation_size=select_one_value("select sum(pg_total_relation_size(schemaname||'.'||tablename)) from pg_tables");
-	my $sum_relation_size=select_one_value("select sum(pg_relation_size(schemaname||'.'||tablename)) from pg_tables");
-	my $sum_index_size=$sum_total_relation_size-$sum_relation_size;
-	my $relation_percent=$sum_relation_size*100/$sum_total_relation_size;
+	my $sum_table_size=select_one_value("select sum(pg_table_size(schemaname||'.'||tablename)) from pg_tables");
+	my $sum_index_size=$sum_total_relation_size-$sum_table_size;
+	#print_report_debug("sum_total_relation_size: $sum_total_relation_size");
+	#print_report_debug("sum_table_size: $sum_table_size");
+	#print_report_debug("sum_index_size: $sum_index_size");
+	my $table_percent=$sum_table_size*100/$sum_total_relation_size;
 	my $index_percent=$sum_index_size*100/$sum_total_relation_size;
 	print_report_info("Database $database total size : ".format_size($sum_total_relation_size));
-	print_report_info("Database $database tables size : ".format_size($sum_relation_size)." (".format_percent($relation_percent)."%)");
-	print_report_info("Database $database indexes size : ".format_size($sum_index_size)." (".format_percent($index_percent)."%)");
+	print_report_info("Database $database tables size : ".format_size($sum_table_size)." (".format_percent($table_percent).")");
+	print_report_info("Database $database indexes size : ".format_size($sum_index_size)." (".format_percent($index_percent).")");
 }
 
 
@@ -271,6 +311,20 @@ print_header_1("Database information for database $database");
 			print_report_warn("Shared buffer idx hit rate is quite good. Increase shared_buffer memory to increase hit rate");
 		} else {
 			print_report_bad("Shared buffer idx hit rate is too low. Increase shared_buffer memory to increase hit rate");
+		}
+	}
+}
+
+## Indexes
+{
+	print_header_2("Indexes");
+	# Invalid indexes
+	{
+		my @Invalid_indexes=select_one_column("select relname from pg_index join pg_class on indexrelid=oid where indisvalid=false");
+		if (@Invalid_indexes > 0) {
+			print_report_bad("There are invalid indexes in the database : @Invalid_indexes");
+		} else {
+			print_report_ok("No invalid indexes");
 		}
 	}
 }
@@ -335,38 +389,23 @@ sub print_report_debug		{ print_report('debug'	,shift); }
 sub print_report {
 	my ($type,$message)=@_;
 	if ($type eq "ok") {
-		print color('green');
-		print "[OK]      ";
-		print color('reset');
+		print STDOUT color('green')  ."[OK]      ".color('reset').$message."\n";
 	} elsif ($type eq "warn") {
-		print color('yellow');
-		print "[WARN]    ";
-		print color('reset');
+		print STDOUT color('yellow') ."[WARN]    ".color('reset').$message."\n";
 	} elsif ($type eq "bad") {
-		print color('red');
-		print "[BAD]     ";
-		print color('reset');
+		print STDERR color('red')    ."[BAD]     ".color('reset').$message."\n";
 	} elsif ($type eq "info") {
-		print color('blue');
-		print "[INFO]    ";
-		print color('reset');
+		print STDOUT color('blue')   ."[INFO]    ".color('reset').$message."\n";
 	} elsif ($type eq "todo") {
-		print color('magenta');
-		print "[TODO]    ";
-		print color('reset');
+		print STDERR color('magenta')."[TODO]    ".color('reset').$message."\n";
 	} elsif ($type eq "unknown") {
-		print color('cyan');
-		print "[UNKNOWN] ";
-		print color('reset');
+		print STDOUT color('cyan')   ."[UNKNOWN] ".color('reset').$message."\n";
 	} elsif ($type eq "debug") {
-		print color('magenta');
-		print "[DEBUG] ";
-		print color('reset');
+		print STDERR color('magenta')."[DEBUG]   ".color('reset').$message."\n";
 	} else {
 		print STDERR "ERROR: bad report type $type\n";
 		exit 1;
 	}
-	print "$message\n";
 }
 
 sub print_header_1 { print_header(1,shift); }
@@ -406,7 +445,7 @@ sub get_setting {
 
 sub format_size {
 	my $size=shift;
-        my @units=('','K','M','G','T','P');
+        my @units=('B','KB','MB','GB','TB','PB');
         my $unit_index=0;
         return 0 if !defined($size);
         while ($size>1024) {
@@ -418,7 +457,7 @@ sub format_size {
 
 sub format_percent {
 	my $value=shift;
-	return sprintf("%.2f",$value);
+	return sprintf("%.2f%%",$value);
 }
 
 sub format_epoch_to_time {
