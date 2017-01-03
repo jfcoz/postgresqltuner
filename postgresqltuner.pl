@@ -105,11 +105,12 @@ print_header_1("OS information");
 
 print_header_1("General instance informations");
 
+my ($v1,$v2,$v3);
 ## Version
 {
 	print_header_2("Version");
 	my $version=get_setting('server_version');
-	my ($v1,$v2,$v3)=split(/\./,$version);
+	($v1,$v2,$v3)=split(/\./,$version);
 	if ($v1<9) {
 		print_report_bad("You are using version $version which is very old");
 	} elsif ($v1 == 9 and $v2 < 6) {
@@ -189,6 +190,27 @@ print_header_1("General instance informations");
 		} else {
 			print_report_ok("Max possible memory usage for PostgreSQL is good");
 		}
+	}
+}
+
+## Two phase commit
+{
+	print_header_2("Two phase commit");
+	if (($v1>=9) and ($v2>=2)) {
+		my $prepared_xact_count=select_one_value("select count(1) from pg_prepared_xacts");
+		if ($prepared_xact_count == 0) {
+			print_report_ok("Currently no two phase commit transactions");
+		} else {
+			print_report_warn("There are currently $prepared_xact_count two phase commit prepared transactions. If they are too long they can lock objects.");
+			my $prepared_xact_lock_count=select_one_value("select count(1) from pg_locks where transactionid in (select transaction from pg_prepared_xacts)");
+			if ($prepared_xact_lock_count > 0) {
+				print_report_bad("Two phase commit transactions have $prepared_xact_lock_count locks !");
+			} else {
+				print_report_ok("No locks for theses $prepared_xact_count transactions");
+			}
+		}
+	} else {
+		print_report_warn("This version does not yet support two phase commit");
 	}
 }
 
