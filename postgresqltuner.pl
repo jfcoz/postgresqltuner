@@ -147,6 +147,26 @@ my ($v1,$v2,$v3);
 	print_report_info("Activated extensions : @Extensions");
 }
 
+## Users
+{
+	print_header_2("Users");
+	my @ExpiringSoonUsers = select_one_column("select usename from pg_user where valuntil < now()+interval'7 days'");
+	if (@ExpiringSoonUsers > 0) {
+		print_report_warn("some users account will expire in less than 7 days : ".join(',',@ExpiringSoonUsers));
+	} else {
+		print_report_ok("No user account will expire in less than 7 days");
+	}
+	if ($i_am_super) {
+		my @BadPasswordUsers = select_one_column("select usename from pg_shadow where passwd=concat('md5',md5(concat(usename,usename)))");
+		if (@BadPasswordUsers > 0) {
+			print_report_warn("some users account have the username as password : ".join(',',@BadPasswordUsers));
+		} else {
+			print_report_ok("No user with password=username");
+		}
+	} else {
+		print_report_warn("Unable to check users password, please use a super user instead");
+	}
+}
 ## Connections and Memory
 {
 	print_header_2("Connection information");
