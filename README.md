@@ -76,7 +76,10 @@ yum install perl-DBD-Pg
 Download :
 
 ```
-wget postgresqltuner.pl
+wget -O postgresqltuner.pl postgresqltuner.pl
+wget -O postgresqltuner.pl https://postgresqltuner.pl
+curl -o postgresqltuner.pl postgresqltuner.pl
+curl -o postgresqltuner.pl https://postgresqltuner.pl
 ```
 
 And run script :
