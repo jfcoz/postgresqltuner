@@ -543,7 +543,7 @@ sub try_load {
 	if ($@) {
 		print STDERR "# Missing Perl module '$mod'. Please install it\n";
 		for my $check (keys %$package_cmd) {
-			print %$package_cmd{$check}."\n" if -f $check;
+			print $package_cmd->{$check}."\n" if -f $check;
 		}
 		return 1;
 	} else {
