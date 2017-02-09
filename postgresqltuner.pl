@@ -188,12 +188,20 @@ my ($v1,$v2,$v3);
 	} else {
 		print_report_warn("Unable to check users password, please use a super user instead");
 	}
+	my $password_encryption=get_setting('password_encryption');
+	if ($password_encryption eq 'off') {
+		print_report_bad("Password encryption is disable by default. Password will not be encrypted until explicitely asked");
+	} else {
+		print_report_ok("Password encryption is enabled");
+	}
 }
 ## Connections and Memory
 {
 	print_header_2("Connection information");
+	# max_connections
 	my $max_connections=get_setting('max_connections');
 	print_report_info("max_connections: $max_connections");
+	# current connections + ratio
 	my $current_connections=select_one_value("select count(1) from pg_stat_activity");
 	my $current_connections_percent=$current_connections*100/$max_connections;
 	print_report_info("current used connections: $current_connections (".format_percent($current_connections_percent).")");
@@ -202,6 +210,18 @@ my ($v1,$v2,$v3);
 	} elsif ($current_connections_percent > 90) {
 		print_report_bad("You are using more that 90% or your connection. Increase max_connections before saturation of connection slots");
 	}
+	# superuser_reserved_connections
+	my $superuser_reserved_connections=get_setting("superuser_reserved_connections");
+	my $superuser_reserved_connections_ratio=$superuser_reserved_connections*100/$max_connections;
+	if ($superuser_reserved_connections == 0) {
+		print_report_bad("No connection slot is reserved for superuser. In case of connection saturation you will not be able to connect to investigate or kill connections");
+	} else {
+		print_report_info("$superuser_reserved_connections are reserved for super user (".format_percent($superuser_reserved_connections_ratio).")");
+	}
+	if ($superuser_reserved_connections_ratio > 20) {
+		print_report_warn(format_percent($superuser_reserved_connections_ratio)." of connections are reserved for super user. This is too much and can limit other users connections");
+	}
+	# average connection age
 	my $connection_age_average=select_one_value("select extract(epoch from avg(now()-backend_start)) as age from pg_stat_activity");
 	print_report_info("Average connection age : ".format_epoch_to_time($connection_age_average));
 	if ($connection_age_average < 1 * $min_s) {
@@ -209,15 +229,29 @@ my ($v1,$v2,$v3);
 	} elsif ($connection_age_average < 10 * $min_s) {
 		print_report_warn("Average connection age is less than 10 minutes. Use a connection pooler to limit new connection/seconds");
 	}
-	print_report_todo("calculate connections/sec from pid variation");
+	# pre_auth_delay
+	my $pre_auth_delay=get_setting('pre_auth_delay');
+	$pre_auth_delay=~s/s//;
+	if ($pre_auth_delay > 0) {
+		print_report_bad("pre_auth_delay=$pre_auth_delay : this is a developer feature for debugging and decrease connection delay of $pre_auth_delay seconds");
+	}
+	# post_auth_delay
+	my $post_auth_delay=get_setting('post_auth_delay');
+	$post_auth_delay=~s/s//;
+	if ($post_auth_delay > 0) {
+		print_report_bad("post_auth_delay=$post_auth_delay : this is a developer feature for debugging and decrease connection delay of $post_auth_delay seconds");
+	}
 
 	print_header_2("Memory usage");
+	# work_mem
 	my $work_mem=get_setting('work_mem');
 	print_report_info("work_mem (per connection): ".format_size($work_mem));
 	my $shared_buffers=get_setting('shared_buffers');
+	# shared_buffers
 	print_report_info("shared_buffers: ".format_size($shared_buffers));
 	my $max_memory=$shared_buffers+$max_connections*$work_mem;
 	print_report_info("Max memory usage (shared_buffers + max_connections*work_mem): ".format_size($max_memory));
+	# ratio of total RAM
 	if (! defined($os->{mem_total})) {
 		print_report_unknown("OS total mem unknown : unable to analyse PostgreSQL memory usage");
 	} else {
@@ -232,6 +266,46 @@ my ($v1,$v2,$v3);
 		} else {
 			print_report_ok("Max possible memory usage for PostgreSQL is good");
 		}
+	}
+	# maintenance_work_mem
+	my $maintenance_work_mem=get_setting('maintenance_work_mem');
+	if ($maintenance_work_mem<=64*1024*1024) {
+		print_report_warn("maintenance_work_mem is less or equal default value. Increase it to reduce maintenance tasks time");
+	} else {
+		print_report_info("maintenance_work_mem=".format_size($maintenance_work_mem));
+	}
+}
+
+## Logs
+{
+	print_header_2("Logs");
+	# log hostname
+	my $log_hostname=get_setting('log_hostname');
+	if ($log_hostname eq 'on') {
+		print_report_bad("log_hostname is on : this will decrease connection performance due to reverse DNS lookup");
+	} else {
+		print_report_ok("log_hostname is off : no reverse DNS lookup latency");
+	}
+
+	# log_min_duration_statement
+	my $log_min_duration_statement=get_setting('log_min_duration_statement');
+	$log_min_duration_statement=~s/ms//;
+	if ($log_min_duration_statement == -1 ) {
+		print_report_warn("log of long queries is desactivated. It will be more difficult to optimize query performances");
+	} elsif ($log_min_duration_statement < 1000 ) {
+		print_report_bad("log_min_duration_statement=$log_min_duration_statement : all requests of more than 1 sec will be written in log. It can be disk intensive (I/O and space)");
+	} else {
+		print_report_ok("long queries will be logged");
+	}
+
+	# log_statement
+	my $log_statement=get_setting('log_statement');
+	if ($log_statement eq 'all') {
+		print_report_bad("log_statement=all : this is very disk intensive and only usefull for debug");
+	} elsif ($log_statement eq 'mod') {
+		print_report_warn("log_statement=mod : this is disk intensive");
+	} else {
+		print_report_ok("log_statement=$log_statement");
 	}
 }
 
@@ -303,6 +377,25 @@ my ($v1,$v2,$v3);
 	}
 }
 
+## Planner
+{
+	print_header_2("Planner");
+	# Modified costs settings
+	my @ModifiedCosts=select_one_column("select name from pg_settings where name like '%cost%' and setting<>boot_val;");
+	if (@ModifiedCosts > 0) {
+		print_report_warn("some costs settings are not the defaults : ".join(',',@ModifiedCosts).". This can have bad impacts on performance. Use at your own risks");
+	} else {
+		print_report_ok("costs settings are defaults");
+	}
+	# disabled plan fonctions
+	my @DisabledPlanFunctions=select_one_column("select name,setting from pg_settings where name like 'enable_%' and setting='off';");
+	if (@DisabledPlanFunctions > 0) {
+		print_report_bad("some plan features are disabled : ".join(',',@DisabledPlanFunctions));
+	} else {
+		print_report_ok("all plan features are enabled");
+	}
+	
+}
 
 # Database information
 print_header_1("Database information for database $database");
