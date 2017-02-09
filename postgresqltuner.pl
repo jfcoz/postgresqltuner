@@ -251,6 +251,17 @@ my ($v1,$v2,$v3);
 	print_report_info("shared_buffers: ".format_size($shared_buffers));
 	my $max_memory=$shared_buffers+$max_connections*$work_mem;
 	print_report_info("Max memory usage (shared_buffers + max_connections*work_mem): ".format_size($max_memory));
+	# effective_cache_size
+	my $effective_cache_size=get_setting('effective_cache_size');
+	print_report_info("effective_cache_size: ".format_size($effective_cache_size));
+	# total database size
+	my $all_databases_size=select_one_value("select sum(pg_database_size(datname)) from pg_database");
+	print_report_info("Size of all databases : ".format_size($all_databases_size));
+	# shared_buffer usage
+	my $shared_buffers_usage=$all_databases_size/$shared_buffers;
+	if ($shared_buffers_usage < 0.7) {
+		print_report_warn("shared_buffer is too big for the total databases size, memory is lost");
+	}
 	# ratio of total RAM
 	if (! defined($os->{mem_total})) {
 		print_report_unknown("OS total mem unknown : unable to analyse PostgreSQL memory usage");
@@ -266,7 +277,16 @@ my ($v1,$v2,$v3);
 		} else {
 			print_report_ok("Max possible memory usage for PostgreSQL is good");
 		}
+		# total ram usage with effective_cache_size
+		my $percent_mem_usage=($max_memory+$effective_cache_size)*100/$os->{mem_total};
+		print_report_info("max memory+effective_cache_size is ".format_percent($percent_mem_usage)." of total RAM");
+		if ($percent_mem_usage < 60 and $shared_buffers_usage > 1) {
+			print_report_warn("Increase shared_buffers and/or effective_cache_size to use more memory");
+		} elsif ($percent_mem_usage > 90) {
+			print_report_warn("the sum of shared_buffers and effective_cache_size is too high, the planer can find bad plans if system cache is smaller than expected");
+		}
 	}
+
 	# maintenance_work_mem
 	my $maintenance_work_mem=get_setting('maintenance_work_mem');
 	if ($maintenance_work_mem<=64*1024*1024) {
