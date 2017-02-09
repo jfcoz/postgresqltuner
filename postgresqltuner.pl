@@ -1,25 +1,47 @@
 #!/usr/bin/perl -w
 
 # The postgresqltuner.pl is Copyright (C) 2016 Julien Francoz <julien-postgresqltuner@francoz.net>,
+# https://github.com/jfcoz/postgresqltuner
 #
-# mysql_analyse_general_log.pl is free software: you can redistribute it and/or modify
+# new relase :
+#   wget postgresqltuner.pl
+#
+# postgresqltuner.pl is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# mysql_analyse_general_log.pl is distributed in the hope that it will be useful,
+# postgresqltuner.pl is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with ike-scan.  If not, see <http://www.gnu.org/licenses/>.
+# along with postgresqltuner.pl.  If not, see <http://www.gnu.org/licenses/>.
 #
 
 use strict;
-use Getopt::Long;
-use DBI;
-use Term::ANSIColor;
+my $nmmc=0; # needed missing modules count
+$nmmc+=try_load("Getopt::Long",{});
+$nmmc+=try_load("DBD::Pg",
+	{
+		'/etc/debian_version'=>'apt-get install -y libdbd-pg-perl',
+		'/etc/redhat-release'=>'yum install -y perl-DBD-Pg'
+	});
+$nmmc+=try_load("DBI",
+	{
+		'/etc/debian_version'=>'apt-get install -y libdbi-perl',
+		'/etc/redhat-release'=>'yum install -y perl-DBI'
+	});
+$nmmc+=try_load("Term::ANSIColor",
+	{
+		'/etc/debian_version'=>'apt-get install -y perl-modules',
+		'/etc/redhat-release'=>'yum install -y perl-DBI'
+	});
+if ($nmmc > 0) {
+	print STDERR "# Please install theses Perl modules\n";
+	exit 1;
+}
 
 my $script_version="0.0.3";
 my $script_name="postgresqltuner.pl";
@@ -437,10 +459,10 @@ sub print_header {
 	my ($level,$title)=@_;
 	my $sep='';
 	if ($level == 1) {
-		print color('green');
+		print color('white');
 		$sep='=';
 	} elsif ($level == 2) {
-		print color('yellow');
+		print color('white');
 		$sep='-';
 	} else {
 		warn("Unknown level $level for title $title");
@@ -512,5 +534,19 @@ sub os_cmd {
 	} else {
 		warn("Command $command failed");
 		return undef;
+	}
+}
+
+sub try_load {
+	my ($mod,$package_cmd)=@_;
+	eval("use $mod");
+	if ($@) {
+		print STDERR "# Missing Perl module '$mod'. Please install it\n";
+		for my $check (keys %$package_cmd) {
+			print %$package_cmd{$check}."\n" if -f $check;
+		}
+		return 1;
+	} else {
+		return 0;
 	}
 }

@@ -73,7 +73,13 @@ apt-get install libdbd-pg-perl
 yum install perl-DBD-Pg
 ```
 
-Dowload and run script :
+Download :
+
+```
+wget postgresqltuner.pl
+```
+
+And run script :
 - Via network :
 ```
 postgresqltuner.pl --host=dbhost --database=testdb --user=username --password=qwerty
