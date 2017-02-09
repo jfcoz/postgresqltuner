@@ -229,8 +229,10 @@ my ($v1,$v2,$v3);
 	print_header_2("Checkpoint");
 	my $checkpoint_completion_target=get_setting('checkpoint_completion_target');
 	if ($checkpoint_completion_target < 0.5) {
-		print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is lower that default(0,5)");
-	} elsif ($checkpoint_completion_target >= 0.5 and $checkpoint_completion_target <= 0.9) {
+		print_report_bad("checkpoint_completion_target($checkpoint_completion_target) is lower than default (0.5)");
+	} elsif ($checkpoint_completion_target >= 0.5 and $checkpoint_completion_target <= 0.7) {
+		print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is low");
+	} elsif ($checkpoint_completion_target >= 0.7 and $checkpoint_completion_target <= 0.9) {
 		print_report_ok("checkpoint_completion_target($checkpoint_completion_target) OK");
 	} elsif ($checkpoint_completion_target > 0.9 and $checkpoint_completion_target < 1) {
 		print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is too near to 1");
@@ -395,7 +397,7 @@ sub print_report {
 	} elsif ($type eq "bad") {
 		print STDERR color('red')    ."[BAD]     ".color('reset').$message."\n";
 	} elsif ($type eq "info") {
-		print STDOUT color('blue')   ."[INFO]    ".color('reset').$message."\n";
+		print STDOUT color('white')  ."[INFO]    ".color('reset').$message."\n";
 	} elsif ($type eq "todo") {
 		print STDERR color('magenta')."[TODO]    ".color('reset').$message."\n";
 	} elsif ($type eq "unknown") {
