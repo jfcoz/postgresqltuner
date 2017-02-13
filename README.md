@@ -24,6 +24,11 @@ apt-get install libdbd-pg-perl
 yum install perl-DBD-Pg
 ```
 
+Add permissions :
+```
+chmod +x postgresqltuner.pl
+```
+
 Download :
 
 ```

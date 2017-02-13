@@ -33,6 +33,11 @@ curl -o postgresqltuner.pl postgresqltuner.pl
 curl -o postgresqltuner.pl https://postgresqltuner.pl
 ```
 
+Droits :
+```
+chmod +x postgresqltuner.pl
+```
+
 Lancement :
 - Connexion par le réseau :
 ```
