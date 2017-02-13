@@ -43,7 +43,7 @@ if ($nmmc > 0) {
 	exit 1;
 }
 
-my $script_version="0.0.3";
+my $script_version="0.0.4";
 my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
@@ -51,7 +51,7 @@ my $day_s=24*$hour_s;
 my $os_cmd_prefix='';
 
 my $host='/var/run/postgresql';
-my $username='';
+my $username='postgres';
 my $password='';
 my $database="template1";
 my $port=5432;
@@ -115,13 +115,56 @@ print_header_1("OS information");
 	if (! defined(os_cmd("true"))) {
 		print_report_unknown("Unable to connect via ssh to $host. Please configure your ssh client to allow to connect to $host with key authentification, and accept key at first connection. For now you will not have OS information");
 	} else {
+		# OS version
 		my $os_version=os_cmd("cat /etc/issue");
 		$os_version=~s/\n//g;
 		print_report_info("OS: $os_version");
+		# OS Memory
 		my $os_mem=os_cmd("free -b");
 		($os->{mem_total},$os->{mem_used},$os->{mem_free},$os->{mem_shared},$os->{mem_buffers},$os->{mem_cached})=($os_mem =~ /Mem:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
 		($os->{swap_total},$os->{swap_used},$os->{swap_free})=($os_mem =~ /Swap:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
 		print_report_info("OS total memory: ".format_size($os->{mem_total}));
+		# Hardware
+		my $hypervisor='';
+		my @dmesg=os_cmd("dmesg");
+		foreach my $line (@dmesg) {
+			if ($line =~ /vmware/i) {
+				$hypervisor='VMware';
+				last;
+			} elsif ($line =~ /kvm/i) {
+				$hypervisor='KVM';
+				last;
+			} elsif ($line =~ /xen/i) {
+				$hypervisor='XEM';
+				last;
+			} elsif ($line =~ /vbox/i) {
+				$hypervisor='VirtualBox';
+				last;
+			} elsif ($line =~ /hyper-v/i) {
+				$hypervisor='Hyper-V';
+				last;
+			}
+		}
+		if ($hypervisor) {
+			print_report_info("Running in $hypervisor hypervisor");
+		} else {
+			print_report_info("Running on physical machine");
+		}
+		# I/O scheduler
+		my $schedulers=os_cmd("cat /sys/block/*/queue/scheduler");
+		my %active_schedulers;
+		foreach my $line (split(/\n/,$schedulers)) {
+			next if ($line eq 'none');
+			foreach my $scheduler (split(/ /,$line)) {
+				if ($scheduler =~ /^\[([a-z]+)\]$/) {
+					$active_schedulers{$1}++;
+				}
+			}
+		}
+		print_report_info("Currently used I/O scheduler(s) : ".join(',',keys(%active_schedulers)));
+		if ($hypervisor && $active_schedulers{'cfq'}) {
+			print_report_bad("CFQ scheduler is bad on virtual machines (hypervisor and/or storage is already dooing I/O scheduling)");
+		}
 	}
 }
 

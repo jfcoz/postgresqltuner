@@ -15,6 +15,8 @@ Connecting to dbhost:5432 database testdb with user username...
 =====  OS information  =====
 [INFO]    OS: Debian GNU/Linux 8 \n \l
 [INFO]    OS total memory: 15.52 G
+[INFO]    Running on physical machine
+[INFO]    Currently used I/O scheduler(s) : cfq
 =====  General instance informations  =====
 -----  Version  -----
 [WARN]    You are using version 9.4.8 which is not the latest version
@@ -23,21 +25,39 @@ Connecting to dbhost:5432 database testdb with user username...
 -----  Databases  -----
 [INFO]    Database count (except templates): 2
 [INFO]    Database list (except templates): postgres testdb
+-----  Extensions  -----
+[INFO]    Number of activated extensions : 1
+[INFO]    Activated extensions : plpgsql
+-----  Users  -----
+[OK]      No user account will expire in less than 7 days
+[OK]      No user with password=username
+[OK]      Password encryption is enabled
 -----  Connection information  -----
 [INFO]    max_connections: 100
 [INFO]    current used connections: 7 (7.00%)
+[INFO]    3 are reserved for super user (3.00%)
 [INFO]    Average connection age : 5d 01h 15m 45s
-[TODO]    calculate connections/sec from pid variation
 -----  Memory usage  -----
 [INFO]    work_mem (per connection): 4.00 M
 [INFO]    shared_buffers: 128.00 M
 [INFO]    Max memory usage (shared_buffers + max_connections*work_mem): 528.00 M
+[INFO]    effective_cache_size: 4.00 GB
+[INFO]    Size of all databases : 37.77 GB
 [INFO]    PostgreSQL maximum memory usage: 3.32 of system RAM
 [WARN]    Max possible memory usage for PostgreSQL is less than 60% of system total RAM. On a dedicated host you can increase PostgreSQL buffers to optimize performances.
+[INFO]    max memory+effective_cache_size is 29.10% of total RAM
+[WARN]    Increase shared_buffers and/or effective_cache_size to use more memory
+[WARN]    maintenance_work_mem is less or equal default value. Increase it to reduce maintenance tasks time
+-----  Logs  -----
+[OK]      log_hostname is off : no reverse DNS lookup latency
+[WARN]    log of long queries is desactivated. It will be more difficult to optimize query performances
+[OK]      log_statement=none
+-----  Two phase commit  -----
+[OK]      Currently no two phase commit transactions
 -----  Autovacuum  -----
 [OK]      autovacuum is activated.
 -----  Checkpoint  -----
-[OK]      checkpoint_completion_target(0.5) OK
+[WARN]    checkpoint_completion_target(0.5) is low
 -----  Disk access  -----
 [OK]      fsync is on
 -----  WAL  -----
@@ -55,7 +75,6 @@ Connecting to dbhost:5432 database testdb with user username...
 [WARN]    Shared buffer idx hit rate is quite good. Increase shared_buffer memory to increase hit rate
 -----  Indexes  -----
 [OK]      No invalid indexes
-
 ```
 
 ## Use it
