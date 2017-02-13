@@ -25,16 +25,9 @@ before_script:
 
 script: "./postgresqltuner.pl --host=localhost --user=postgres --database=travis_ci_test"
 
-# branches:
-#   only:
-#     - master
-
-# notifications:
-#   recipients:
-#     - 
-#   email:
-#     on_success: change
-#     on_failure: always
-
-# env:
-
+notifications:
+  recipients:
+    - julien-postgresqltunertravis@francoz.net
+  email:
+    on_success: change
+    on_failure: always
