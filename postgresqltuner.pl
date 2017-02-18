@@ -741,6 +741,7 @@ sub get_sysctl {
 	if (open(my $ctl,"</proc/sys/$name")) {
 		my $value=<$ctl>;
 		close($ctl);
+		chomp($value);
 		return $value;
 	} else {
 		print_report_warn("Unable to open sysctl $name");
