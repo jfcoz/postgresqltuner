@@ -43,7 +43,7 @@ if ($nmmc > 0) {
 	exit 1;
 }
 
-my $script_version="0.0.4";
+my $script_version="0.0.5";
 my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
@@ -90,11 +90,13 @@ my $i_am_super=$users->{$username}->{usesuper};
 my $settings=select_all_hashref("select * from pg_settings","name");
 my @Extensions=select_one_column("select extname from pg_extension");
 my $os={};
+my %advices;
 
 if ($i_am_super) {
 	print_report_ok("User used for report have super rights");
 } else {
-	print_report_warn("User used for report does not have super rights. Report will be incomplete");
+	print_report_bad("User used for report does not have super rights. Report will be incomplete");
+	add_advice("report","urgent","Use an account with super privileges to get a more complete report");
 }
 
 # Report
@@ -113,7 +115,8 @@ print_header_1("OS information");
 		die("Invalid host $host");
 	}
 	if (! defined(os_cmd("true"))) {
-		print_report_unknown("Unable to connect via ssh to $host. Please configure your ssh client to allow to connect to $host with key authentification, and accept key at first connection. For now you will not have OS information");
+		print_report_unknown("Unable to connect via ssh to $host. Please configure your ssh client to allow to connect to $host with key authentication, and accept key at first connection. For now you will not have OS information");
+		add_advice("report","urgent","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication. This will allow to collect more system informations");
 	} else {
 		# OS version
 		my $os_version=os_cmd("cat /etc/issue");
@@ -124,6 +127,21 @@ print_header_1("OS information");
 		($os->{mem_total},$os->{mem_used},$os->{mem_free},$os->{mem_shared},$os->{mem_buffers},$os->{mem_cached})=($os_mem =~ /Mem:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
 		($os->{swap_total},$os->{swap_used},$os->{swap_free})=($os_mem =~ /Swap:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
 		print_report_info("OS total memory: ".format_size($os->{mem_total}));
+		# Overcommit
+		my $overcommit_memory=get_sysctl('vm.overcommit_memory');
+		if ($overcommit_memory != 2) {
+			print_report_bad("Memory overcommitment is allowed on the system. This can lead to OOM Killer killing some PostgreSQL process, which will cause a PostgreSQL server restart (crash recovery)");
+			add_advice('sysctl','urgent','set vm.overcommit_memory=2 in /etc/sysctl.conf and run sysctl -p to reload it. This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
+			my $overcommit_ratio=get_sysctl('vm.overcommit_ratio');
+			print_report_info("sysctl vm.overcommit_ratio=$overcommit_ratio");
+			if ($overcommit_ratio < 50) {
+				print_report_bad("vm.overcommit_memory is too small, you will not be able to use more than $overcommit_ratio*RAM+SWAP for applications");
+			} elsif ($overcommit_ratio > 90) {
+				print_report_bad("vm.overcommit_ratio is too high, you need to keep free space for the kernel");
+			}
+		} else {
+			print_report_ok("vm.overcommit_memory is good : no memory overcommitment");
+		}
 		# Hardware
 		my $hypervisor='';
 		my @dmesg=os_cmd("dmesg");
@@ -164,6 +182,7 @@ print_header_1("OS information");
 		print_report_info("Currently used I/O scheduler(s) : ".join(',',keys(%active_schedulers)));
 		if ($hypervisor && $active_schedulers{'cfq'}) {
 			print_report_bad("CFQ scheduler is bad on virtual machines (hypervisor and/or storage is already dooing I/O scheduling)");
+			add_advice("system","urgent","Configure your system to use noop or deadline io scheduler when on virtual machines :\necho deadline > /sys/block/sdX/queue/scheduler\nupdate your kernel parameters line with elevator=deadline to keep this parameter at next reboot");
 		}
 	}
 }
@@ -409,12 +428,15 @@ my ($v1,$v2,$v3);
 	my $checkpoint_completion_target=get_setting('checkpoint_completion_target');
 	if ($checkpoint_completion_target < 0.5) {
 		print_report_bad("checkpoint_completion_target($checkpoint_completion_target) is lower than default (0.5)");
+		add_advice("checkpoint","urgent","Your checkpoint completion target is too low. Put something nearest from 0.8/0.9 to balance your writes better during the checkpoint interval");
 	} elsif ($checkpoint_completion_target >= 0.5 and $checkpoint_completion_target <= 0.7) {
 		print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is low");
+		add_advice("checkpoint","medium","Your checkpoint completion target is too low. Put something nearest from 0.8/0.9 to balance your writes better during the checkpoint interval");
 	} elsif ($checkpoint_completion_target >= 0.7 and $checkpoint_completion_target <= 0.9) {
 		print_report_ok("checkpoint_completion_target($checkpoint_completion_target) OK");
 	} elsif ($checkpoint_completion_target > 0.9 and $checkpoint_completion_target < 1) {
 		print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is too near to 1");
+		add_advice("checkpoint","medium","Your checkpoint completion target is too high. Put something nearest from 0.8/0.9 to balance your writes better during the checkpoint interval");
 	} else {
 		print_report_bad("checkpoint_completion_target too high ($checkpoint_completion_target)");
 	}
@@ -428,6 +450,7 @@ my ($v1,$v2,$v3);
 		print_report_ok("fsync is on");
 	} else {
 		print_report_bad("fsync is off. You can loss data in case of crash");
+		add_advice("checkpoint","urgent","set fsync to on. You can loose data in case of database crash !");
 	}
 }
 
@@ -437,6 +460,7 @@ my ($v1,$v2,$v3);
 	my $wal_level=get_setting('wal_level');
 	if ($wal_level eq 'minimal') {
 		print_report_bad("The wal_level minimal does not allow PITR backup and recovery");
+		add_advice("backup","urgent","Configure your wal_level to a level which allow PITR backup and recovery");
 	}
 }
 
@@ -523,6 +547,7 @@ print_header_1("Database information for database $database");
 		my @Invalid_indexes=select_one_column("select relname from pg_index join pg_class on indexrelid=oid where indisvalid=false");
 		if (@Invalid_indexes > 0) {
 			print_report_bad("There are invalid indexes in the database : @Invalid_indexes");
+			add_advice("index","urgent","You have invalid indexes in the database. Please check/rebuild them");
 		} else {
 			print_report_ok("No invalid indexes");
 		}
@@ -531,6 +556,9 @@ print_header_1("Database information for database $database");
 
 
 $dbh->disconnect();
+
+print_advices();
+
 exit(0);
 
 
@@ -704,5 +732,47 @@ sub try_load {
 		return 1;
 	} else {
 		return 0;
+	}
+}
+
+sub get_sysctl {
+	my $name=shift;
+	$name=~s/\./\//g;
+	if (open(my $ctl,"</proc/sys/$name")) {
+		my $value=<$ctl>;
+		close($ctl);
+		chomp($value);
+		return $value;
+	} else {
+		print_report_warn("Unable to open sysctl $name");
+		return undef;
+	}
+}
+
+sub add_advice {
+	my ($category,$priority,$advice)=@_;
+	die("unknown priority $priority") if ($priority !~ /(urgent|medium|low)/);
+	push(@{$advices{$category}{$priority}},$advice);
+}
+
+sub print_advices {
+	print "\n";
+	print_header_1("Configuration advices");
+	my $advice_count=0;
+	foreach my $category (sort(keys(%advices))) {
+		print_header_2($category);
+		foreach my $priority (sort(keys($advices{$category}))) {
+			print color("red")     if $priority eq "urgent";
+			print color("yellow")  if $priority eq "medium";
+			print color("magenta") if $priority eq "low";
+			foreach my $advice (@{$advices{$category}{$priority}}) {
+				print "$advice\n";
+				$advice_count++;
+			}
+			print color("reset");
+		}
+	}
+	if ($advice_count == 0) {
+		print color("green")."Everything is good".color("reset")."\n";
 	}
 }
