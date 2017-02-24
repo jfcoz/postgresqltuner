@@ -761,7 +761,7 @@ sub print_advices {
 	my $advice_count=0;
 	foreach my $category (sort(keys(%advices))) {
 		print_header_2($category);
-		foreach my $priority (sort(keys($advices{$category}))) {
+		foreach my $priority (sort(keys(%{$advices{$category}}))) {
 			print color("red")     if $priority eq "urgent";
 			print color("yellow")  if $priority eq "medium";
 			print color("magenta") if $priority eq "low";
