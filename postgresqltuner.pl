@@ -134,7 +134,7 @@ print_header_1("OS information");
 			add_advice('sysctl','urgent','set vm.overcommit_memory=2 in /etc/sysctl.conf and run sysctl -p to reload it. This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
 			my $overcommit_ratio=get_sysctl('vm.overcommit_ratio');
 			print_report_info("sysctl vm.overcommit_ratio=$overcommit_ratio");
-			if ($overcommit_ratio < 50) {
+			if ($overcommit_ratio <= 50) {
 				print_report_bad("vm.overcommit_memory is too small, you will not be able to use more than $overcommit_ratio*RAM+SWAP for applications");
 			} elsif ($overcommit_ratio > 90) {
 				print_report_bad("vm.overcommit_ratio is too high, you need to keep free space for the kernel");
@@ -263,6 +263,7 @@ my ($v1,$v2,$v3);
 	# max_connections
 	my $max_connections=get_setting('max_connections');
 	print_report_info("max_connections: $max_connections");
+	
 	# current connections + ratio
 	my $current_connections=select_one_value("select count(1) from pg_stat_activity");
 	my $current_connections_percent=$current_connections*100/$max_connections;
@@ -307,12 +308,25 @@ my ($v1,$v2,$v3);
 	print_header_2("Memory usage");
 	# work_mem
 	my $work_mem=get_setting('work_mem');
+	my $work_mem_total=$work_mem*$max_connections;
 	print_report_info("work_mem (per connection): ".format_size($work_mem));
 	my $shared_buffers=get_setting('shared_buffers');
 	# shared_buffers
 	print_report_info("shared_buffers: ".format_size($shared_buffers));
-	my $max_memory=$shared_buffers+$max_connections*$work_mem;
-	print_report_info("Max memory usage (shared_buffers + max_connections*work_mem): ".format_size($max_memory));
+	# track activity
+	my $track_activity_size=get_setting('track_activity_query_size')*(get_setting('max_connections')+get_setting('max_worker_processes')+get_setting('autovacuum_max_workers'));
+	print_report_info("Track activity reserved size : ".format_size($track_activity_size));
+	# maintenance_work_mem
+	my $maintenance_work_mem=get_setting('maintenance_work_mem');
+	my $maintenance_work_mem_total=$maintenance_work_mem*get_setting('autovacuum_max_workers');
+	if ($maintenance_work_mem<=64*1024*1024) {
+		print_report_warn("maintenance_work_mem is less or equal default value. Increase it to reduce maintenance tasks time");
+	} else {
+		print_report_info("maintenance_work_mem=".format_size($maintenance_work_mem));
+	}
+	# total
+	my $max_memory=$shared_buffers+$work_mem_total+$maintenance_work_mem_total+$track_activity_size;
+	print_report_info("Max memory usage (shared_buffers + max_connections*work_mem + autovacuum_max_workers*maintenance_work_mem) + track activity size: ".format_size($max_memory));
 	# effective_cache_size
 	my $effective_cache_size=get_setting('effective_cache_size');
 	print_report_info("effective_cache_size: ".format_size($effective_cache_size));
@@ -339,6 +353,12 @@ my ($v1,$v2,$v3);
 		} else {
 			print_report_ok("Max possible memory usage for PostgreSQL is good");
 		}
+		# track activity ratio
+		my $track_activity_ratio=$track_activity_size*100/$os->{mem_total};
+		if ($track_activity_ratio > 1) {
+			print_report_warn("Track activity reserved size is more than 1% of your RAM");
+			add_advice("track_activity","low","Your track activity reserved size is too high. Reduce track_activity_query_size and/or max_connections");
+		}
 		# total ram usage with effective_cache_size
 		my $percent_mem_usage=($max_memory+$effective_cache_size)*100/$os->{mem_total};
 		print_report_info("max memory+effective_cache_size is ".format_percent($percent_mem_usage)." of total RAM");
@@ -349,13 +369,6 @@ my ($v1,$v2,$v3);
 		}
 	}
 
-	# maintenance_work_mem
-	my $maintenance_work_mem=get_setting('maintenance_work_mem');
-	if ($maintenance_work_mem<=64*1024*1024) {
-		print_report_warn("maintenance_work_mem is less or equal default value. Increase it to reduce maintenance tasks time");
-	} else {
-		print_report_info("maintenance_work_mem=".format_size($maintenance_work_mem));
-	}
 }
 
 ## Logs
@@ -417,6 +430,8 @@ my ($v1,$v2,$v3);
 	print_header_2("Autovacuum");
 	if (get_setting('autovacuum') eq 'on') {
 		print_report_ok('autovacuum is activated.');
+		my $autovacuum_max_workers=get_setting('autovacuum_max_workers');
+		print_report_info("autovacuum_max_workers: $autovacuum_max_workers");
 	} else {
 		print_report_bad('autovacuum is not activated. This is bad except if you known what you do.');
 	}
