@@ -567,6 +567,16 @@ print_header_1("Database information for database $database");
 			print_report_ok("No invalid indexes");
 		}
 	}
+	# Unused indexes
+	{
+		my @Unused_indexes=select_one_column("select indexrelname from pg_stat_user_indexes where idx_scan=0 and not exists (select 1 from pg_constraint where conindid=indexrelid)");
+		if (@Unused_indexes > 0) {
+			print_report_warn("Some indexes are unused since last statistics: @Unused_indexes");
+			add_advice("index","medium","You have unused indexes in the database since last statistics. Please remove them if they are never use");
+		} else {
+			print_report_ok("No unused indexes");
+		}
+	}
 }
 
 
