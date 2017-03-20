@@ -579,6 +579,20 @@ print_header_1("Database information for database $database");
 	}
 }
 
+## Procedures 
+{
+	print_header_2("Procedures");
+	# Procedures with default cost
+	{
+		my @Default_cost_procs=select_one_column("select concat(n.nspname,'.',p.proname) from pg_catalog.pg_proc p left join pg_catalog.pg_namespace n on n.oid = p.pronamespace where pg_catalog.pg_function_is_visible(p.oid) and n.nspname not in ('pg_catalog','information_schema') and p.prorows<>1000 and p.procost<>10");
+		if (@Default_cost_procs > 0) {
+			print_report_warn("Some user procedures does not have custom cost and rows settings : @Default_cost_procs");
+			add_advice("proc","low","You have custom procedures with default cost and rows setting. Please reconfigure them with specific values to help the planer");
+		} else {
+			print_report_ok("No procedures with default costs");
+		}
+	}
+}
 
 $dbh->disconnect();
 
