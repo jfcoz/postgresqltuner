@@ -229,6 +229,12 @@ my ($v1,$v2,$v3);
 	print_header_2("Extensions");
 	print_report_info("Number of activated extensions : ".scalar(@Extensions));
 	print_report_info("Activated extensions : @Extensions");
+	if (grep(/pg_stat_statements/,@Extensions)) {
+		print_report_ok("Extension pg_stat_statements is enabled");
+	} else {
+		print_report_warn("Extensions pg_stat_statements is disabled");
+		add_advice("extension","low","Enable pg_stat_statements to collect statistics on all queries (not only queries longer than log_min_duration_statement in logs)");
+	}
 }
 
 ## Users
@@ -466,6 +472,12 @@ my ($v1,$v2,$v3);
 	} else {
 		print_report_bad("fsync is off. You can loss data in case of crash");
 		add_advice("checkpoint","urgent","set fsync to on. You can loose data in case of database crash !");
+	}
+	if (get_setting('synchronize_seqscans') eq 'on') {
+		print_report_ok("synchronize_seqscans is on");
+	} else {
+		print_report_warn("synchronize_seqscans is off");
+		add_advice("seqscan","medium","set synchronize_seqscans to synchronize seqscans and reduce disks I/O");
 	}
 }
 
