@@ -43,7 +43,7 @@ if ($nmmc > 0) {
 	exit 1;
 }
 
-my $script_version="0.0.5";
+my $script_version="0.0.7";
 my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
@@ -88,7 +88,12 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host",$username,$password,
 my $users=select_all_hashref("select * from pg_user","usename");
 my $i_am_super=$users->{$username}->{usesuper};
 my $settings=select_all_hashref("select * from pg_settings","name");
-my @Extensions=select_one_column("select extname from pg_extension");
+my @Extensions;
+if (min_version('9.1')) {
+	@Extensions=select_one_column("select extname from pg_extension");
+} else {
+	print_report_warn("pg_extension does not exists in ".get_setting('server_version'));
+}
 my $os={};
 my %advices;
 
@@ -194,15 +199,14 @@ my ($v1,$v2,$v3);
 {
 	print_header_2("Version");
 	my $version=get_setting('server_version');
-	($v1,$v2,$v3)=split(/\./,$version);
-	if ($v1<9) {
-		print_report_bad("You are using version $version which is very old");
-	} elsif ($v1 == 9 and $v2 < 6) {
-		print_report_warn("You are using version $version which is not the latest version");
-	} elsif ($v1 == 9 and $v2 == 6) {
+	if (min_version('9.6')) {
 		print_report_ok("You are using last $version");
+	} elsif (min_version('9.0')) {
+		print_report_warn("You are using version $version which is not the latest version");
+	} elsif (min_version('8.0')) {
+		print_report_bad("You are using version $version which is very old");
 	} else {
-		print_report_bad("Version $version is unknown to $script_name $script_version : you may use an old version of this script");
+		print_report_bad("You are using version $version which is very old and is not supported by this script");
 	}
 }
 
@@ -247,7 +251,7 @@ my ($v1,$v2,$v3);
 		print_report_ok("No user account will expire in less than 7 days");
 	}
 	if ($i_am_super) {
-		my @BadPasswordUsers = select_one_column("select usename from pg_shadow where passwd=concat('md5',md5(concat(usename,usename)))");
+		my @BadPasswordUsers = select_one_column("select usename from pg_shadow where passwd='md5'||md5(usename||usename)");
 		if (@BadPasswordUsers > 0) {
 			print_report_warn("some users account have the username as password : ".join(',',@BadPasswordUsers));
 		} else {
@@ -320,7 +324,11 @@ my ($v1,$v2,$v3);
 	# shared_buffers
 	print_report_info("shared_buffers: ".format_size($shared_buffers));
 	# track activity
-	my $track_activity_size=get_setting('track_activity_query_size')*(get_setting('max_connections')+get_setting('max_worker_processes')+get_setting('autovacuum_max_workers'));
+	my $max_processes=get_setting('max_connections')+get_setting('autovacuum_max_workers');
+	if (min_version('9.4')) {
+		$max_processes+=get_setting('max_worker_processes');
+	}
+	my $track_activity_size=get_setting('track_activity_query_size')*$max_processes;
 	print_report_info("Track activity reserved size : ".format_size($track_activity_size));
 	# maintenance_work_mem
 	my $maintenance_work_mem=get_setting('maintenance_work_mem');
@@ -484,10 +492,14 @@ my ($v1,$v2,$v3);
 ## WAL / PITR
 {
 	print_header_2("WAL");
-	my $wal_level=get_setting('wal_level');
-	if ($wal_level eq 'minimal') {
-		print_report_bad("The wal_level minimal does not allow PITR backup and recovery");
-		add_advice("backup","urgent","Configure your wal_level to a level which allow PITR backup and recovery");
+	if (min_version('9.0')) {
+		my $wal_level=get_setting('wal_level');
+		if ($wal_level eq 'minimal') {
+			print_report_bad("The wal_level minimal does not allow PITR backup and recovery");
+			add_advice("backup","urgent","Configure your wal_level to a level which allow PITR backup and recovery");
+		}
+	} else {
+		print_report_warn("wal_level is not supported on ".get_setting('server_version'));
 	}
 }
 
@@ -518,16 +530,18 @@ print_header_1("Database information for database $database");
 {
 	print_header_2("Database size");
 	my $sum_total_relation_size=select_one_value("select sum(pg_total_relation_size(schemaname||'.'||tablename)) from pg_tables");
-	my $sum_table_size=select_one_value("select sum(pg_table_size(schemaname||'.'||tablename)) from pg_tables");
-	my $sum_index_size=$sum_total_relation_size-$sum_table_size;
-	#print_report_debug("sum_total_relation_size: $sum_total_relation_size");
-	#print_report_debug("sum_table_size: $sum_table_size");
-	#print_report_debug("sum_index_size: $sum_index_size");
-	my $table_percent=$sum_table_size*100/$sum_total_relation_size;
-	my $index_percent=$sum_index_size*100/$sum_total_relation_size;
 	print_report_info("Database $database total size : ".format_size($sum_total_relation_size));
-	print_report_info("Database $database tables size : ".format_size($sum_table_size)." (".format_percent($table_percent).")");
-	print_report_info("Database $database indexes size : ".format_size($sum_index_size)." (".format_percent($index_percent).")");
+	if (min_version('9.0')) {
+		my $sum_table_size=select_one_value("select sum(pg_table_size(schemaname||'.'||tablename)) from pg_tables");
+		my $sum_index_size=$sum_total_relation_size-$sum_table_size;
+		#print_report_debug("sum_total_relation_size: $sum_total_relation_size");
+		#print_report_debug("sum_table_size: $sum_table_size");
+		#print_report_debug("sum_index_size: $sum_index_size");
+		my $table_percent=$sum_table_size*100/$sum_total_relation_size;
+		my $index_percent=$sum_index_size*100/$sum_total_relation_size;
+		print_report_info("Database $database tables size : ".format_size($sum_table_size)." (".format_percent($table_percent).")");
+		print_report_info("Database $database indexes size : ".format_size($sum_index_size)." (".format_percent($index_percent).")");
+	}
 }
 
 
@@ -581,7 +595,12 @@ print_header_1("Database information for database $database");
 	}
 	# Unused indexes
 	{
-		my @Unused_indexes=select_one_column("select indexrelname from pg_stat_user_indexes where idx_scan=0 and not exists (select 1 from pg_constraint where conindid=indexrelid)");
+		my @Unused_indexes;
+		if (min_version(9.0)) {
+			@Unused_indexes=select_one_column("select indexrelname from pg_stat_user_indexes where idx_scan=0 and not exists (select 1 from pg_constraint where conindid=indexrelid)");
+		} else {
+			@Unused_indexes=select_one_column("select indexrelname from pg_stat_user_indexes where idx_scan=0");
+		}
 		if (@Unused_indexes > 0) {
 			print_report_warn("Some indexes are unused since last statistics: @Unused_indexes");
 			add_advice("index","medium","You have unused indexes in the database since last statistics. Please remove them if they are never use");
@@ -596,7 +615,7 @@ print_header_1("Database information for database $database");
 	print_header_2("Procedures");
 	# Procedures with default cost
 	{
-		my @Default_cost_procs=select_one_column("select concat(n.nspname,'.',p.proname) from pg_catalog.pg_proc p left join pg_catalog.pg_namespace n on n.oid = p.pronamespace where pg_catalog.pg_function_is_visible(p.oid) and n.nspname not in ('pg_catalog','information_schema') and p.prorows<>1000 and p.procost<>10");
+		my @Default_cost_procs=select_one_column("select n.nspname||'.'||p.proname from pg_catalog.pg_proc p left join pg_catalog.pg_namespace n on n.oid = p.pronamespace where pg_catalog.pg_function_is_visible(p.oid) and n.nspname not in ('pg_catalog','information_schema') and p.prorows<>1000 and p.procost<>10");
 		if (@Default_cost_procs > 0) {
 			print_report_warn("Some user procedures does not have custom cost and rows settings : @Default_cost_procs");
 			add_advice("proc","low","You have custom procedures with default cost and rows setting. Please reconfigure them with specific values to help the planer");
@@ -612,6 +631,23 @@ print_advices();
 
 exit(0);
 
+
+
+
+sub min_version {
+	my $min_version=shift;
+	my $cur_version=get_setting('server_version');
+	my ($min_major,$min_minor)=split(/\./,$min_version);
+	my ($cur_major,$cur_minor)=split(/\./,$cur_version);
+	if ($cur_major > $min_major) {
+		return 1;
+	} elsif ($cur_major == $min_major) {
+		if ($cur_minor >= $min_minor) {
+			return 1;
+		}
+	}
+	return 0;
+}
 
 # execute SELECT query, return result as hashref on key
 sub select_all_hashref {
