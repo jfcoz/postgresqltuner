@@ -194,7 +194,6 @@ print_header_1("OS information");
 
 print_header_1("General instance informations");
 
-my ($v1,$v2,$v3);
 ## Version
 {
 	print_header_2("Version");
@@ -421,7 +420,7 @@ my ($v1,$v2,$v3);
 ## Two phase commit
 {
 	print_header_2("Two phase commit");
-	if (($v1>=9) and ($v2>=2)) {
+	if (min_version('9.2')) {
 		my $prepared_xact_count=select_one_value("select count(1) from pg_prepared_xacts");
 		if ($prepared_xact_count == 0) {
 			print_report_ok("Currently no two phase commit transactions");
@@ -596,7 +595,7 @@ print_header_1("Database information for database $database");
 	# Unused indexes
 	{
 		my @Unused_indexes;
-		if (min_version(9.0)) {
+		if (min_version('9.0')) {
 			@Unused_indexes=select_one_column("select indexrelname from pg_stat_user_indexes where idx_scan=0 and not exists (select 1 from pg_constraint where conindid=indexrelid)");
 		} else {
 			@Unused_indexes=select_one_column("select indexrelname from pg_stat_user_indexes where idx_scan=0");
