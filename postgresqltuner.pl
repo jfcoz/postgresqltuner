@@ -43,7 +43,7 @@ if ($nmmc > 0) {
 	exit 1;
 }
 
-my $script_version="0.0.7";
+my $script_version="0.0.8";
 my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
@@ -56,16 +56,18 @@ my $password='';
 my $database="template1";
 my $port=5432;
 my $help=0;
+my $work_mem_per_connection_percent=150;
 GetOptions (
-	"host=s"        => \$host,
-	"user=s"        => \$username,
-	"username=s"    => \$username,
-	"pass=s"        => \$password,
-	"password=s"    => \$password,
-	"db=s"          => \$database,
-	"database=s"    => \$database,
-	"port=i"        => \$port,
-	"help"          => \$help,
+	"host=s"      => \$host,
+	"user=s"      => \$username,
+	"username=s"  => \$username,
+	"pass=s"      => \$password,
+	"password=s"  => \$password,
+	"db=s"        => \$database,
+	"database=s"  => \$database,
+	"port=i"      => \$port,
+	"help"        => \$help,
+	"wmp=i"       => \$work_mem_per_connection_percent,
 ) or usage(1);
 
 print "$script_name version $script_version\n";
@@ -77,7 +79,8 @@ usage(1) if (!defined($host) or !defined($username) or !defined($password));
 
 sub usage {
 	my $return=shift;
-	print STDERR "usage: $script_name --host [ hostname | /var/run/postgresql ] [--user username] [--password password] [--database database] [--port port]\n";
+	print STDERR "usage: $script_name --host [ hostname | /var/run/postgresql ] [--user username] [--password password] [--database database] [--port port] [--wmp 150]\n";
+	print STDERR "\twmp: average number of work_mem buffers per connection in percent (default 150)\n";
 	exit $return;
 }
 
@@ -317,8 +320,10 @@ print_header_1("General instance informations");
 	print_header_2("Memory usage");
 	# work_mem
 	my $work_mem=get_setting('work_mem');
-	my $work_mem_total=$work_mem*$max_connections;
-	print_report_info("work_mem (per connection): ".format_size($work_mem));
+	my $work_mem_total=$work_mem*$work_mem_per_connection_percent/100*$max_connections;
+	print_report_info("configured work_mem: ".format_size($work_mem));
+	print_report_info("Using an average ratio of work_mem buffers by connection of $work_mem_per_connection_percent% (use --wmp to change it)");
+	print_report_info("total work_mem (per connection): ".format_size($work_mem*$work_mem_per_connection_percent/100));
 	my $shared_buffers=get_setting('shared_buffers');
 	# shared_buffers
 	print_report_info("shared_buffers: ".format_size($shared_buffers));
@@ -331,7 +336,8 @@ print_header_1("General instance informations");
 	print_report_info("Track activity reserved size : ".format_size($track_activity_size));
 	# maintenance_work_mem
 	my $maintenance_work_mem=get_setting('maintenance_work_mem');
-	my $maintenance_work_mem_total=$maintenance_work_mem*get_setting('autovacuum_max_workers');
+	my $autovacuum_max_workers=get_setting('autovacuum_max_workers');
+	my $maintenance_work_mem_total=$maintenance_work_mem*$autovacuum_max_workers;
 	if ($maintenance_work_mem<=64*1024*1024) {
 		print_report_warn("maintenance_work_mem is less or equal default value. Increase it to reduce maintenance tasks time");
 	} else {
@@ -339,7 +345,7 @@ print_header_1("General instance informations");
 	}
 	# total
 	my $max_memory=$shared_buffers+$work_mem_total+$maintenance_work_mem_total+$track_activity_size;
-	print_report_info("Max memory usage (shared_buffers + max_connections*work_mem + autovacuum_max_workers*maintenance_work_mem) + track activity size: ".format_size($max_memory));
+	print_report_info("Max memory usage :\n\t\t  shared_buffers (".format_size($shared_buffers).")\n\t\t+ max_connections * work_mem * average_work_mem_buffers_per_connection ($max_connections * ".format_size($work_mem)." * $work_mem_per_connection_percent / 100 = ".format_size($max_connections*$work_mem*$work_mem_per_connection_percent/100).")\n\t\t+ autovacuum_max_workers * maintenance_work_mem ($autovacuum_max_workers * ".format_size($maintenance_work_mem)." = ".format_size($autovacuum_max_workers*$maintenance_work_mem).")\n\t\t+ track activity size (".format_size($track_activity_size).")\n\t\t= ".format_size($max_memory));
 	# effective_cache_size
 	my $effective_cache_size=get_setting('effective_cache_size');
 	print_report_info("effective_cache_size: ".format_size($effective_cache_size));
