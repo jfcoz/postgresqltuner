@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl
 
 # The postgresqltuner.pl is Copyright (C) 2016 Julien Francoz <julien-postgresqltuner@francoz.net>,
 # https://github.com/jfcoz/postgresqltuner
@@ -21,6 +21,8 @@
 #
 
 use strict;
+use warnings;
+
 my $nmmc=0; # needed missing modules count
 $nmmc+=try_load("Getopt::Long",{});
 $nmmc+=try_load("DBD::Pg",
@@ -384,7 +386,7 @@ print_header_1("General instance informations");
 		if ($percent_mem_usage < 60 and $shared_buffers_usage > 1) {
 			print_report_warn("Increase shared_buffers and/or effective_cache_size to use more memory");
 		} elsif ($percent_mem_usage > 90) {
-			print_report_warn("the sum of shared_buffers and effective_cache_size is too high, the planer can find bad plans if system cache is smaller than expected");
+			print_report_warn("the sum of max_memory and effective_cache_size is too high, the planer can find bad plans if system cache is smaller than expected");
 		}
 	}
 
