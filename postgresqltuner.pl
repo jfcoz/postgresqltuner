@@ -23,6 +23,8 @@
 use strict;
 use warnings;
 
+#$SIG{__WARN__} = sub { die @_ };
+
 my $nmmc=0; # needed missing modules count
 $nmmc+=try_load("Getopt::Long",{});
 $nmmc+=try_load("DBD::Pg",
@@ -120,7 +122,7 @@ print_header_1("OS information");
 	} elsif ($host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/) {
 		$os_cmd_prefix='';
 	} elsif ($host =~ /^[a-zA-Z0-9.-]+$/) {
-		$os_cmd_prefix="ssh $host ";
+		$os_cmd_prefix="ssh -o BatchMode=yes $host ";
 	} else {
 		die("Invalid host $host");
 	}
@@ -203,14 +205,21 @@ print_header_1("General instance informations");
 {
 	print_header_2("Version");
 	my $version=get_setting('server_version');
-	if (min_version('9.6')) {
+	if ($version=~/rc/) {
+		print_report_bad("You are using version $version which is a Release Candidate : do not use in production");
+		add_advice("version","urgent","Use a stable version (not a Release Candidate)");
+	}
+	if (min_version('10')) {
 		print_report_ok("You are using last $version");
 	} elsif (min_version('9.0')) {
 		print_report_warn("You are using version $version which is not the latest version");
+		add_advice("version","low","Upgrade to last version");
 	} elsif (min_version('8.0')) {
 		print_report_bad("You are using version $version which is very old");
+		add_advice("version","medium","Upgrade to last version");
 	} else {
 		print_report_bad("You are using version $version which is very old and is not supported by this script");
+		add_advice("version","high","Upgrade to last version");
 	}
 }
 
@@ -644,12 +653,19 @@ exit(0);
 sub min_version {
 	my $min_version=shift;
 	my $cur_version=get_setting('server_version');
+	$cur_version=~s/rc.*//; # clean RC
 	my ($min_major,$min_minor)=split(/\./,$min_version);
 	my ($cur_major,$cur_minor)=split(/\./,$cur_version);
 	if ($cur_major > $min_major) {
 		return 1;
 	} elsif ($cur_major == $min_major) {
-		if ($cur_minor >= $min_minor) {
+		if (defined($min_minor)) {
+			if ($cur_minor >= $min_minor) {
+				return 1;
+			} else {
+				return 0;
+			}
+		} else {
 			return 1;
 		}
 	}
@@ -806,6 +822,7 @@ sub format_epoch_to_time {
 
 sub os_cmd {
 	my $command=$os_cmd_prefix.shift;
+	local $SIG{__WARN__} = sub {};
 	my $result=`$command 2>&1`;
 	if ( $? == 0 ) {
 		return $result;
@@ -860,7 +877,7 @@ sub print_advices {
 			print color("yellow")  if $priority eq "medium";
 			print color("magenta") if $priority eq "low";
 			foreach my $advice (@{$advices{$category}{$priority}}) {
-				print "$advice\n";
+				print "[".uc($priority)."] $advice\n";
 				$advice_count++;
 			}
 			print color("reset");
