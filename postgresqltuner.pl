@@ -89,7 +89,7 @@ sub usage {
 }
 
 print "Connecting to $host:$port database $database with user $username...\n";
-my $dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host",$username,$password,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
+my $dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host;port=$port;",$username,$password,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
 
 # Collect datas
 my $users=select_all_hashref("select * from pg_user","usename");
