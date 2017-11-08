@@ -47,7 +47,7 @@ if ($nmmc > 0) {
 	exit 1;
 }
 
-my $script_version="0.0.8";
+my $script_version="0.0.9";
 my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
