@@ -47,7 +47,7 @@ if ($nmmc > 0) {
 	exit 1;
 }
 
-my $script_version="0.0.9";
+my $script_version="0.0.10";
 my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
@@ -545,10 +545,10 @@ print_header_1("Database information for database $database");
 ## Database size
 {
 	print_header_2("Database size");
-	my $sum_total_relation_size=select_one_value("select sum(pg_total_relation_size(schemaname||'.'||tablename)) from pg_tables");
+	my $sum_total_relation_size=select_one_value("select sum(pg_total_relation_size(schemaname||'.'||quote_ident(tablename))) from pg_tables");
 	print_report_info("Database $database total size : ".format_size($sum_total_relation_size));
 	if (min_version('9.0')) {
-		my $sum_table_size=select_one_value("select sum(pg_table_size(schemaname||'.'||tablename)) from pg_tables");
+		my $sum_table_size=select_one_value("select sum(pg_table_size(schemaname||'.'||quote_ident(tablename))) from pg_tables");
 		my $sum_index_size=$sum_total_relation_size-$sum_table_size;
 		#print_report_debug("sum_total_relation_size: $sum_total_relation_size");
 		#print_report_debug("sum_table_size: $sum_table_size");
