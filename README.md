@@ -145,6 +145,9 @@ postgresqltuner.pl --host=dbhost --database=testdb --user=username --password=qw
 postgres$ postgresqltuner.pl --host=/var/run/postgresql  # PostgreSQL socket directory
 ```
 
+If available postgresqltuner.pl will use standard PostgreSQL variables like `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSERNAME`, and password from `~/.pgpass` file.
+
+
 ### With docker
 
  - Via network :
@@ -163,6 +166,13 @@ docker run -it --rm --link your-postgresql-container:dbhost jfcoz/postgresqltune
 ### SSH
 
 When using it remotly, postgresqltuner.pl will use ssh to collect OS informations. You must configure ssh to connect to remote host with private key authentication.
+
+### Passwords
+
+For better security use a `~/.pgpass` file containing passwords, so password will not be saved in the shell history nor in the process list. [.pgpass documentation](https://www.postgresql.org/docs/current/static/libpq-pgpass.html)
+```
+host:port:database:username:password
+```
 
 ## Options
 

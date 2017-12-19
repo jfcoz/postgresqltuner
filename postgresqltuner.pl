@@ -47,26 +47,27 @@ if ($nmmc > 0) {
 	exit 1;
 }
 
-my $script_version="0.0.10";
+my $script_version="0.0.11";
 my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
 my $day_s=24*$hour_s;
 my $os_cmd_prefix='';
 
-my $host='/var/run/postgresql';
-my $username='postgres';
-my $password='';
-my $database="template1";
-my $port=5432;
+my $host=undef;
+my $username=undef;
+my $password=undef;
+my $database=undef;
+my $port=undef;
+my $pgpassfile=$ENV{HOME}.'/.pgpass';
 my $help=0;
 my $work_mem_per_connection_percent=150;
 GetOptions (
 	"host=s"      => \$host,
 	"user=s"      => \$username,
 	"username=s"  => \$username,
-	"pass=s"      => \$password,
-	"password=s"  => \$password,
+	"pass:s"      => \$password,
+	"password:s"  => \$password,
 	"db=s"        => \$database,
 	"database=s"  => \$database,
 	"port=i"      => \$port,
@@ -79,12 +80,78 @@ if ($help) {
 	usage(0);
 }
 
+# host
+if (!defined($host)) {
+	if (defined($ENV{PGHOST})) {
+		$host=$ENV{PGHOST};
+	} else {
+		$host='/var/run/postgresql';
+	}
+}
+
+# port
+if (!defined($port)) {
+	if (defined($ENV{PGPORT})) {
+		$port=$ENV{PGPORT};
+	} else {
+		$port=5432;
+	}
+}
+
+# database
+if (!defined($database)) {
+	if (defined($ENV{PGDATABASE})) {
+		$database=$ENV{PGDATABASE};
+	} else {
+		$database='template1';
+	}
+}
+
+# user
+if (!defined($username)) {
+	if (defined($ENV{PGUSER})) {
+		$username=$ENV{PGUSER};
+	} else {
+		$username='postgres';
+	}
+}
+
+# if needed, get password from ~/.pgpass
+if (!defined($password)) {
+	if (defined($ENV{PGPASSWORD})) {
+		$password=$ENV{PGPASSWORD};
+	} else {
+		if (defined($ENV{PGPASSFILE})) {
+			$pgpassfile=$ENV{PGPASSFILE};
+		}
+	}
+
+	if (open(PGPASS,'<',$pgpassfile)) {
+		while (my $line=<PGPASS>) {
+			chomp($line);
+			next if $line =~ /^\s*#/;
+			my ($pgp_host,$pgp_port,$pgp_database,$pgp_username,$pgp_password,$pgp_more)=split(/(?<!\\):/,$line); # split except after escape char
+			next if (!defined($pgp_password) or defined($pgp_more)); # skip malformated line
+			next if (!pgpass_match('host',$host,$pgp_host));
+			next if (!pgpass_match('port',$port,$pgp_port));
+			next if (!pgpass_match('database',$database,$pgp_database));
+			next if (!pgpass_match('username',$username,$pgp_username));
+			$password=pgpass_unescape($pgp_password);
+			last;
+		}
+		close(PGPASS);
+	}
+}
+
 usage(1) if (!defined($host) or !defined($username) or !defined($password));
 
 sub usage {
 	my $return=shift;
 	print STDERR "usage: $script_name --host [ hostname | /var/run/postgresql ] [--user username] [--password password] [--database database] [--port port] [--wmp 150]\n";
-	print STDERR "\twmp: average number of work_mem buffers per connection in percent (default 150)\n";
+	print STDERR "If available connection informations can be read from \$PGHOST, \$PGPORT, \$PGDATABASE, \$PGUSER, \$PGPASSWORD\n";
+	print STDERR "For security reasons, prefer usage of password in ~/.pgpass\n";
+	print STDERR "\thost:port:database:username:password\n";
+	print STDERR "  --wmp: average number of work_mem buffers per connection in percent (default 150)\n";
 	exit $return;
 }
 
@@ -886,4 +953,19 @@ sub print_advices {
 	if ($advice_count == 0) {
 		print color("green")."Everything is good".color("reset")."\n";
 	}
+}
+
+sub pgpass_match {
+	my ($type,$var,$pgp_var)=@_;
+	$pgp_var=pgpass_unescape($pgp_var);
+	return 1 if $pgp_var eq '*';
+	return 1 if $pgp_var eq $var;
+	return 1 if $type eq 'host' and $pgp_var eq 'localhost' and $var=~m/^\//; # allow sockets if host=localhost
+	return 0;
+}
+
+sub pgpass_unescape {
+	my ($value)=@_;
+	$value=~s/\\(.)/$1/g;
+	return $value;
 }
