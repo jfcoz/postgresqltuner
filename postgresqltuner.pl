@@ -47,7 +47,7 @@ if ($nmmc > 0) {
 	exit 1;
 }
 
-my $script_version="0.0.11";
+my $script_version="0.0.12";
 my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
@@ -62,6 +62,7 @@ my $port=undef;
 my $pgpassfile=$ENV{HOME}.'/.pgpass';
 my $help=0;
 my $work_mem_per_connection_percent=150;
+my @Ssh_opts=('BatchMode=yes');
 GetOptions (
 	"host=s"      => \$host,
 	"user=s"      => \$username,
@@ -73,11 +74,18 @@ GetOptions (
 	"port=i"      => \$port,
 	"help"        => \$help,
 	"wmp=i"       => \$work_mem_per_connection_percent,
+	"sshopt=s"    => \@Ssh_opts
 ) or usage(1);
 
 print "$script_name version $script_version\n";
 if ($help) {
 	usage(0);
+}
+
+# ssh options
+my $ssh_opts='';
+foreach my $ssh_opt (@Ssh_opts) {
+	$ssh_opts.=' -o '.$ssh_opt;
 }
 
 # host
@@ -141,17 +149,44 @@ if (!defined($password)) {
 		}
 		close(PGPASS);
 	}
+
+	# default
+	if (!defined($password)) {
+		$password='';
+	}
 }
 
-usage(1) if (!defined($host) or !defined($username) or !defined($password));
+if (!defined($host)) {
+	print STDERR "Missing host\n";
+	print STDERR "\tset \$PGHOST environnement variable\n";
+	print STDERR "or\tadd --host option\n";
+	usage(1);
+}
+
+if (!defined($username)) {
+	print STDERR "Missing username\n";
+	print STDERR "\tset \$PGUSER environnement variable\n";
+	print STDERR "or\tadd --user option\n";
+	usage(1);
+}
+
+if (!defined($password)) {
+	print STDERR "Missing password\n";
+	print STDERR "\tconfigure ~/.pgpass\n";
+	print STDERR "or\tset \$PGPASSWORD environnement variable\n";
+	print STDERR "or\tadd --password option\n";
+	usage(1);
+}
 
 sub usage {
 	my $return=shift;
 	print STDERR "usage: $script_name --host [ hostname | /var/run/postgresql ] [--user username] [--password password] [--database database] [--port port] [--wmp 150]\n";
+	print STDERR "\t[--sshopt=Name=Value]...\n";
 	print STDERR "If available connection informations can be read from \$PGHOST, \$PGPORT, \$PGDATABASE, \$PGUSER, \$PGPASSWORD\n";
 	print STDERR "For security reasons, prefer usage of password in ~/.pgpass\n";
 	print STDERR "\thost:port:database:username:password\n";
 	print STDERR "  --wmp: average number of work_mem buffers per connection in percent (default 150)\n";
+	print STDERR "  --sshopt: pass options to ssh (example --sshopt=Port=2200)\n";
 	exit $return;
 }
 
@@ -189,7 +224,7 @@ print_header_1("OS information");
 	} elsif ($host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/) {
 		$os_cmd_prefix='';
 	} elsif ($host =~ /^[a-zA-Z0-9.-]+$/) {
-		$os_cmd_prefix="ssh -o BatchMode=yes $host ";
+		$os_cmd_prefix="ssh $ssh_opts $host ";
 	} else {
 		die("Invalid host $host");
 	}
