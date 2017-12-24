@@ -47,7 +47,7 @@ if ($nmmc > 0) {
 	exit 1;
 }
 
-my $script_version="0.0.12";
+my $script_version="1.0.0";
 my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
@@ -662,6 +662,21 @@ print_header_1("Database information for database $database");
 	}
 }
 
+## Tablespace location
+{
+	print_header_2("Tablespace location");
+	if (min_version('9.2')) {
+		my $tablespaces_in_pgdata=select_all_hashref("select spcname,pg_tablespace_location(oid) from pg_tablespace where pg_tablespace_location(oid) like (select setting from pg_settings where name='data_directory')||'/%'",'spcname');
+		if (keys(%{$tablespaces_in_pgdata}) == 0) {
+			print_report_ok("No tablespace in PGDATA");
+		} else {
+			print_report_bad("Some tablespaces are in PGDATA : ".join(' ',keys(%{$tablespaces_in_pgdata})));
+			add_advice('tablespaces','urgent','Some tablespaces are in PGDATA. Move them outside of this folder.');
+		}
+	} else {
+		print_report_unknown("This check is not supported before 9.2");
+	}
+}
 
 
 ## Shared buffer usage
