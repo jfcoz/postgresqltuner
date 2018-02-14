@@ -267,7 +267,7 @@ print_header_1("OS information");
 				$hypervisor='KVM';
 				last;
 			} elsif ($line =~ /xen/i) {
-				$hypervisor='XEM';
+				$hypervisor='XEN';
 				last;
 			} elsif ($line =~ /vbox/i) {
 				$hypervisor='VirtualBox';
