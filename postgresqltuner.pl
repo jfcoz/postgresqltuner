@@ -249,7 +249,7 @@ print_header_1("OS information");
 			my $overcommit_ratio=get_sysctl('vm.overcommit_ratio');
 			print_report_info("sysctl vm.overcommit_ratio=$overcommit_ratio");
 			if ($overcommit_ratio <= 50) {
-				print_report_bad("vm.overcommit_memory is too small, you will not be able to use more than $overcommit_ratio*RAM+SWAP for applications");
+				print_report_bad("vm.overcommit_ratio is too small, you will not be able to use more than $overcommit_ratio*RAM+SWAP for applications");
 			} elsif ($overcommit_ratio > 90) {
 				print_report_bad("vm.overcommit_ratio is too high, you need to keep free space for the kernel");
 			}
