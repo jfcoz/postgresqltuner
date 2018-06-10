@@ -283,9 +283,14 @@ print_header_1("OS information");
 			print_report_info("Running on physical machine");
 		}
 		# I/O scheduler
-		my $schedulers=os_cmd("cat /sys/block/*/queue/scheduler");
+		opendir(my $sys_block,'/sys/block') or die("Unable to open /sys/block");
 		my %active_schedulers;
-		foreach my $line (split(/\n/,$schedulers)) {
+		while (my $disk=readdir($sys_block)) {
+			next if ($disk eq '.' or $disk eq '..');
+			next if ($disk =~ /^sr/); # exclude cdrom
+			open(my $block_scheduler,"</sys/block/$disk/queue/scheduler") or die ("Unable to open /sys/block/$disk/queue/scheduler");
+			my $line=readline($block_scheduler);
+			close($block_scheduler);
 			next if ($line eq 'none');
 			foreach my $scheduler (split(/ /,$line)) {
 				if ($scheduler =~ /^\[([a-z]+)\]$/) {
@@ -293,6 +298,7 @@ print_header_1("OS information");
 				}
 			}
 		}
+		closedir($sys_block);
 		print_report_info("Currently used I/O scheduler(s) : ".join(',',keys(%active_schedulers)));
 		if ($hypervisor && $active_schedulers{'cfq'}) {
 			print_report_bad("CFQ scheduler is bad on virtual machines (hypervisor and/or storage is already dooing I/O scheduling)");
