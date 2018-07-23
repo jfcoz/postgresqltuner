@@ -40,7 +40,7 @@ $nmmc+=try_load("DBI",
 $nmmc+=try_load("Term::ANSIColor",
 	{
 		'/etc/debian_version'=>'apt-get install -y perl-modules',
-		'/etc/redhat-release'=>'yum install -y perl-DBI'
+		'/etc/redhat-release'=>'yum install -y perl-Term-ANSIColor'
 	});
 if ($nmmc > 0) {
 	print STDERR "# Please install theses Perl modules\n";
