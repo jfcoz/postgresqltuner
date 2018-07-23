@@ -121,6 +121,12 @@ apt-get install libdbd-pg-perl
 yum install perl-DBD-Pg
 ```
 
+- On MacOS with Homebrew:
+```
+brew install perl
+cpan DBD-pg
+```
+
 Download :
 
 ```
