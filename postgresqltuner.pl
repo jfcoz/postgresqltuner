@@ -772,9 +772,9 @@ print_header_1("Database information for database $database");
 	{
 		my @Unused_indexes;
 		if (min_version('9.0')) {
-			@Unused_indexes=select_one_column("select indexrelname from pg_stat_user_indexes where idx_scan=0 and not exists (select 1 from pg_constraint where conindid=indexrelid)");
+			@Unused_indexes=select_one_column("select CONCAT(relname, '.', indexrelname) from pg_stat_user_indexes where idx_scan=0 and not exists (select 1 from pg_constraint where conindid=indexrelid) ORDER BY relname, indexrelname");
 		} else {
-			@Unused_indexes=select_one_column("select indexrelname from pg_stat_user_indexes where idx_scan=0");
+			@Unused_indexes=select_one_column("select CONCAT(relname, '.', indexrelname) from pg_stat_user_indexes where idx_scan=0 ORDER BY relname, indexrelname");
 		}
 		if (@Unused_indexes > 0) {
 			print_report_warn("Some indexes are unused since last statistics: @Unused_indexes");
