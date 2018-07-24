@@ -16,8 +16,7 @@ addons:
   postgresql: "9.4"
 
 before_install:
-  - sudo apt-get update -q
-  - sudo apt-get install -y libdbd-pg-perl
+  - cpanm DBD::Pg
 
 install:
   - true
