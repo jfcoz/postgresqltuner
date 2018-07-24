@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 # The postgresqltuner.pl is Copyright (C) 2016 Julien Francoz <julien-postgresqltuner@francoz.net>,
 # https://github.com/jfcoz/postgresqltuner
@@ -22,6 +22,12 @@
 
 use strict;
 use warnings;
+use Config;
+
+my $os={};
+$os->{name}=$Config{osname};
+$os->{arch}=$Config{archname};
+$os->{version}=$Config{osvers};
 
 #$SIG{__WARN__} = sub { die @_ };
 
@@ -29,18 +35,21 @@ my $nmmc=0; # needed missing modules count
 $nmmc+=try_load("Getopt::Long",{});
 $nmmc+=try_load("DBD::Pg",
 	{
+    '/usr/local/bin/cpan' => 'cpan DBD:Pg',
 		'/etc/debian_version'=>'apt-get install -y libdbd-pg-perl',
 		'/etc/redhat-release'=>'yum install -y perl-DBD-Pg'
 	});
 $nmmc+=try_load("DBI",
 	{
+    '/usr/local/bin/cpan' => 'cpan DBI',
 		'/etc/debian_version'=>'apt-get install -y libdbi-perl',
 		'/etc/redhat-release'=>'yum install -y perl-DBI'
 	});
 $nmmc+=try_load("Term::ANSIColor",
 	{
+    '/usr/local/bin/cpan' => 'cpan install Term::ANSIColor',
 		'/etc/debian_version'=>'apt-get install -y perl-modules',
-		'/etc/redhat-release'=>'yum install -y perl-DBI'
+		'/etc/redhat-release'=>'yum install -y perl-Term-ANSIColor'
 	});
 if ($nmmc > 0) {
 	print STDERR "# Please install theses Perl modules\n";
@@ -203,7 +212,6 @@ if (min_version('9.1')) {
 } else {
 	print_report_warn("pg_extension does not exists in ".get_setting('server_version'));
 }
-my $os={};
 my %advices;
 
 if ($i_am_super) {
@@ -232,74 +240,93 @@ print_header_1("OS information");
 		print_report_unknown("Unable to connect via ssh to $host. Please configure your ssh client to allow to connect to $host with key authentication, and accept key at first connection. For now you will not have OS information");
 		add_advice("report","urgent","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication. This will allow to collect more system informations");
 	} else {
-		# OS version
-		my $os_version=os_cmd("cat /etc/issue");
-		$os_version=~s/\n//g;
-		print_report_info("OS: $os_version");
+		print_report_info("OS: $os->{name} Version: $os->{version} Arch: $os->{arch}");
 		# OS Memory
-		my $os_mem=os_cmd("free -b");
-		($os->{mem_total},$os->{mem_used},$os->{mem_free},$os->{mem_shared},$os->{mem_buffers},$os->{mem_cached})=($os_mem =~ /Mem:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
-		($os->{swap_total},$os->{swap_used},$os->{swap_free})=($os_mem =~ /Swap:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
+    if ($os->{name} eq 'darwin') {
+		  my $os_mem=os_cmd("top -l 1 -S -n 0");
+      $os->{mem_used} = standard_units($os_mem =~ /PhysMem: (\d+)([GMK])/);
+      $os->{mem_free} = standard_units($os_mem =~ /(\d+)([GMK]) unused\./);
+      $os->{mem_total} = $os->{mem_free} + $os->{mem_used};
+      $os->{swap_used} = standard_units($os_mem =~ /Swap:\W+(\d+)([GMK])/);
+      $os->{swap_free} = standard_units($os_mem =~ /Swap:\W+\d+[GMK] \+ (\d+)([GMK]) free/);
+      $os->{swap_total} = $os->{swap_free} + $os->{swap_used};
+    } else {
+		  my $os_mem=os_cmd("free -b");
+      ($os->{mem_total},$os->{mem_used},$os->{mem_free},$os->{mem_shared},$os->{mem_buffers},$os->{mem_cached})=($os_mem =~ /Mem:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
+      ($os->{swap_total},$os->{swap_used},$os->{swap_free})=($os_mem =~ /Swap:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
+    }
 		print_report_info("OS total memory: ".format_size($os->{mem_total}));
-		# Overcommit
-		my $overcommit_memory=get_sysctl('vm.overcommit_memory');
-		if ($overcommit_memory != 2) {
-			print_report_bad("Memory overcommitment is allowed on the system. This can lead to OOM Killer killing some PostgreSQL process, which will cause a PostgreSQL server restart (crash recovery)");
-			add_advice('sysctl','urgent','set vm.overcommit_memory=2 in /etc/sysctl.conf and run sysctl -p to reload it. This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
-			my $overcommit_ratio=get_sysctl('vm.overcommit_ratio');
-			print_report_info("sysctl vm.overcommit_ratio=$overcommit_ratio");
-			if ($overcommit_ratio <= 50) {
-				print_report_bad("vm.overcommit_ratio is too small, you will not be able to use more than $overcommit_ratio*RAM+SWAP for applications");
-			} elsif ($overcommit_ratio > 90) {
-				print_report_bad("vm.overcommit_ratio is too high, you need to keep free space for the kernel");
-			}
-		} else {
-			print_report_ok("vm.overcommit_memory is good : no memory overcommitment");
-		}
+
+    # Overcommit
+    if ($os->{name} eq 'darwin') {
+      print_report_unknown("No information on memory overcommitment on MacOS.");
+    } else {
+      my $overcommit_memory=get_sysctl('vm.overcommit_memory');
+      if ($overcommit_memory != 2) {
+        print_report_bad("Memory overcommitment is allowed on the system. This can lead to OOM Killer killing some PostgreSQL process, which will cause a PostgreSQL server restart (crash recovery)");
+        add_advice('sysctl','urgent','set vm.overcommit_memory=2 in /etc/sysctl.conf and run sysctl -p to reload it. This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
+        my $overcommit_ratio=get_sysctl('vm.overcommit_ratio');
+        print_report_info("sysctl vm.overcommit_ratio=$overcommit_ratio");
+        if ($overcommit_ratio <= 50) {
+          print_report_bad("vm.overcommit_ratio is too small, you will not be able to use more than $overcommit_ratio*RAM+SWAP for applications");
+        } elsif ($overcommit_ratio > 90) {
+          print_report_bad("vm.overcommit_ratio is too high, you need to keep free space for the kernel");
+        }
+      } else {
+        print_report_ok("vm.overcommit_memory is good : no memory overcommitment");
+      }
+    }
 		# Hardware
 		my $hypervisor='';
-		my @dmesg=os_cmd("dmesg");
-		foreach my $line (@dmesg) {
-			if ($line =~ /vmware/i) {
-				$hypervisor='VMware';
-				last;
-			} elsif ($line =~ /kvm/i) {
-				$hypervisor='KVM';
-				last;
-			} elsif ($line =~ /xen/i) {
-				$hypervisor='XEN';
-				last;
-			} elsif ($line =~ /vbox/i) {
-				$hypervisor='VirtualBox';
-				last;
-			} elsif ($line =~ /hyper-v/i) {
-				$hypervisor='Hyper-V';
-				last;
-			}
-		}
-		if ($hypervisor) {
-			print_report_info("Running in $hypervisor hypervisor");
-		} else {
-			print_report_info("Running on physical machine");
-		}
+    if (!$os->{name} eq 'darwin') {
+		  my @dmesg=os_cmd("dmesg");
+      foreach my $line (@dmesg) {
+        if ($line =~ /vmware/i) {
+          $hypervisor='VMware';
+          last;
+        } elsif ($line =~ /kvm/i) {
+          $hypervisor='KVM';
+          last;
+        } elsif ($line =~ /xen/i) {
+          $hypervisor='XEN';
+          last;
+        } elsif ($line =~ /vbox/i) {
+          $hypervisor='VirtualBox';
+          last;
+        } elsif ($line =~ /hyper-v/i) {
+          $hypervisor='Hyper-V';
+          last;
+        }
+      }
+
+      if ($hypervisor) {
+        print_report_info("Running in $hypervisor hypervisor");
+      } else {
+        print_report_info("Running on physical machine");
+      }
+    }
 		# I/O scheduler
-		opendir(my $sys_block,'/sys/block') or die("Unable to open /sys/block");
-		my %active_schedulers;
-		while (my $disk=readdir($sys_block)) {
-			next if ($disk eq '.' or $disk eq '..');
-			next if ($disk =~ /^sr/); # exclude cdrom
-			open(my $block_scheduler,"</sys/block/$disk/queue/scheduler") or die ("Unable to open /sys/block/$disk/queue/scheduler");
-			my $line=readline($block_scheduler);
-			close($block_scheduler);
-			next if ($line eq 'none');
-			foreach my $scheduler (split(/ /,$line)) {
-				if ($scheduler =~ /^\[([a-z]+)\]$/) {
-					$active_schedulers{$1}++;
-				}
-			}
-		}
-		closedir($sys_block);
-		print_report_info("Currently used I/O scheduler(s) : ".join(',',keys(%active_schedulers)));
+    my %active_schedulers;
+    if ($os->{name} eq 'darwin') {
+      print_report_unknown("No I/O scheduler information on MacOS");
+    } else {
+      opendir(my $sys_block,'/sys/block') or die("Unable to open /sys/block");
+      while (my $disk=readdir($sys_block)) {
+        next if ($disk eq '.' or $disk eq '..');
+        next if ($disk =~ /^sr/); # exclude cdrom
+        open(my $block_scheduler,"</sys/block/$disk/queue/scheduler") or die ("Unable to open /sys/block/$disk/queue/scheduler");
+        my $line=readline($block_scheduler);
+        close($block_scheduler);
+        next if ($line eq 'none');
+        foreach my $scheduler (split(/ /,$line)) {
+          if ($scheduler =~ /^\[([a-z]+)\]$/) {
+            $active_schedulers{$1}++;
+          }
+        }
+      }
+      closedir($sys_block);
+      print_report_info("Currently used I/O scheduler(s) : ".join(',',keys(%active_schedulers)));
+    }
 		if ($hypervisor && $active_schedulers{'cfq'}) {
 			print_report_bad("CFQ scheduler is bad on virtual machines (hypervisor and/or storage is already dooing I/O scheduling)");
 			add_advice("system","urgent","Configure your system to use noop or deadline io scheduler when on virtual machines :\necho deadline > /sys/block/sdX/queue/scheduler\nupdate your kernel parameters line with elevator=deadline to keep this parameter at next reboot");
@@ -394,7 +421,7 @@ print_header_1("General instance informations");
 	# max_connections
 	my $max_connections=get_setting('max_connections');
 	print_report_info("max_connections: $max_connections");
-	
+
 	# current connections + ratio
 	my $current_connections=select_one_value("select count(1) from pg_stat_activity");
 	my $current_connections_percent=$current_connections*100/$max_connections;
@@ -487,7 +514,7 @@ print_header_1("General instance informations");
 		} elsif ($percent_postgresql_max_memory > 80) {
 			print_report_warn("Max possible memory usage for PostgreSQL is more than 90% of system total RAM.");
 		} elsif ($percent_postgresql_max_memory < 60) {
-			print_report_warn("Max possible memory usage for PostgreSQL is less than 60% of system total RAM. On a dedicated host you can increase PostgreSQL buffers to optimize performances.");			
+			print_report_warn("Max possible memory usage for PostgreSQL is less than 60% of system total RAM. On a dedicated host you can increase PostgreSQL buffers to optimize performances.");
 		} else {
 			print_report_ok("Max possible memory usage for PostgreSQL is good");
 		}
@@ -594,17 +621,26 @@ print_header_1("General instance informations");
 		print_report_bad("checkpoint_completion_target too high ($checkpoint_completion_target)");
 	}
 }
-	
+
 ## Disk access
 {
 	print_header_2("Disk access");
 	my $fsync=get_setting('fsync');
+  my $wal_sync_method=get_setting('wal_sync_method');
 	if ($fsync eq 'on') {
 		print_report_ok("fsync is on");
 	} else {
 		print_report_bad("fsync is off. You can loss data in case of crash");
 		add_advice("checkpoint","urgent","set fsync to on. You can loose data in case of database crash !");
 	}
+  if ($os->{name} eq 'darwin') {
+    if ($wal_sync_method ne 'fsync_writethrough') {
+      print_report_bad("wal_sync_method is $wal_sync_method. Settings other than fsync_writethrough can lead to loss of data in case of crash");
+      add_advice("disk access","urgent","set wal_sync_method to fsync_writethrough to on. Otherwise, the disk write cache may prevent recovery after a crash.");
+    } else {
+  		print_report_ok("wal_sync_method is $wal_sync_method");
+    }
+  }
 	if (get_setting('synchronize_seqscans') eq 'on') {
 		print_report_ok("synchronize_seqscans is on");
 	} else {
@@ -644,7 +680,7 @@ print_header_1("General instance informations");
 	} else {
 		print_report_ok("all plan features are enabled");
 	}
-	
+
 }
 
 # Database information
@@ -736,9 +772,9 @@ print_header_1("Database information for database $database");
 	{
 		my @Unused_indexes;
 		if (min_version('9.0')) {
-			@Unused_indexes=select_one_column("select indexrelname from pg_stat_user_indexes where idx_scan=0 and not exists (select 1 from pg_constraint where conindid=indexrelid)");
+			@Unused_indexes=select_one_column("select relname||'.'||indexrelname from pg_stat_user_indexes where idx_scan=0 and not exists (select 1 from pg_constraint where conindid=indexrelid) ORDER BY relname, indexrelname");
 		} else {
-			@Unused_indexes=select_one_column("select indexrelname from pg_stat_user_indexes where idx_scan=0");
+			@Unused_indexes=select_one_column("select relname||'.'||indexrelname from pg_stat_user_indexes where idx_scan=0 ORDER BY relname, indexrelname");
 		}
 		if (@Unused_indexes > 0) {
 			print_report_warn("Some indexes are unused since last statistics: @Unused_indexes");
@@ -749,7 +785,7 @@ print_header_1("Database information for database $database");
 	}
 }
 
-## Procedures 
+## Procedures
 {
 	print_header_2("Procedures");
 	# Procedures with default cost
@@ -807,7 +843,7 @@ sub select_all_hashref {
 	return $sth->fetchall_hashref($key);
 }
 
-# execute SELECT query, return only one value 
+# execute SELECT query, return only one value
 sub select_one_value {
 	my ($query)=@_;
 	if (!defined($query)) {
@@ -895,13 +931,20 @@ sub get_setting {
 		print STDERR "ERROR: setting $name does not exists\n";
 		exit 1;
 	} else {
-		return $settings->{$name}->{setting}         if !$settings->{$name}->{unit};
-		return $settings->{$name}->{setting}*1024    if $settings->{$name}->{unit} eq 'kB';
-		return $settings->{$name}->{setting}*8*1024  if $settings->{$name}->{unit} eq '8kB';
-		return $settings->{$name}->{setting}*16*1024 if $settings->{$name}->{unit} eq '16kB';
-		return $settings->{$name}->{setting}.'s'     if $settings->{$name}->{unit} eq 's';
-		return $settings->{$name}->{setting}.'ms'    if $settings->{$name}->{unit} eq 'ms';
-	}
+    return standard_units($settings->{$name}->{setting}, $settings->{$name}->{unit});
+  }
+}
+sub standard_units {
+  my $value=shift;
+  my $unit=shift;
+  return $value         if !$unit;
+  return $value*1024    if $unit eq 'kB' || $unit eq 'K';
+  return $value*8*1024  if $unit eq '8kB';
+  return $value*16*1024 if $unit eq '16kB';
+  return $value*1024*1024 if $unit eq 'M';
+  return $value*1024*1024*1024 if $unit eq 'G';
+  return $value.'s'     if $unit eq 's';
+  return $value.'ms'    if $unit eq 'ms';
 }
 
 sub format_size {
