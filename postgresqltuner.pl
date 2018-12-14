@@ -61,7 +61,7 @@ my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
 my $day_s=24*$hour_s;
-my $os_cmd_prefix='';
+my $os_cmd_prefix='LANG=C LC_ALL=C ';
 
 my $host=undef;
 my $username=undef;
