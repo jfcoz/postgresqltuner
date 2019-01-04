@@ -61,7 +61,6 @@ my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
 my $day_s=24*$hour_s;
-my $os_cmd_prefix='LANG=C LC_ALL=C ';
 
 my $host=undef;
 my $username=undef;
@@ -72,6 +71,7 @@ my $pgpassfile=$ENV{HOME}.'/.pgpass';
 my $help=0;
 my $work_mem_per_connection_percent=150;
 my @Ssh_opts=('BatchMode=yes');
+my $ssd=0;
 GetOptions (
 	"host=s"      => \$host,
 	"user=s"      => \$username,
@@ -83,7 +83,8 @@ GetOptions (
 	"port=i"      => \$port,
 	"help"        => \$help,
 	"wmp=i"       => \$work_mem_per_connection_percent,
-	"sshopt=s"    => \@Ssh_opts
+	"sshopt=s"    => \@Ssh_opts,
+        "ssd"         => \$ssd,
 ) or usage(1);
 
 print "$script_name version $script_version\n";
@@ -191,14 +192,40 @@ sub usage {
 	my $return=shift;
 	print STDERR "usage: $script_name --host [ hostname | /var/run/postgresql ] [--user username] [--password password] [--database database] [--port port] [--wmp 150]\n";
 	print STDERR "\t[--sshopt=Name=Value]...\n";
+	print STDERR "\t[--ssd]\n";
 	print STDERR "If available connection informations can be read from \$PGHOST, \$PGPORT, \$PGDATABASE, \$PGUSER, \$PGPASSWORD\n";
 	print STDERR "For security reasons, prefer usage of password in ~/.pgpass\n";
 	print STDERR "\thost:port:database:username:password\n";
 	print STDERR "  --wmp: average number of work_mem buffers per connection in percent (default 150)\n";
 	print STDERR "  --sshopt: pass options to ssh (example --sshopt=Port=2200)\n";
+	print STDERR "  --ssd: force storage detection as non rotational drives\n";
 	exit $return;
 }
 
+# OS command check
+print "Checking if OS commands is available on $host...\n";
+my $os_cmd_prefix='LANG=C LC_ALL=C ';
+my $can_run_os_cmd=0;
+if ($host =~ /^\//) {
+	$os_cmd_prefix='';
+} elsif ($host =~ /^localhost$/) {
+	$os_cmd_prefix='';
+} elsif ($host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+	$os_cmd_prefix='';
+} elsif ($host =~ /^[a-zA-Z0-9.-]+$/) {
+	$os_cmd_prefix="ssh $ssh_opts $host ";
+} else {
+	die("Invalid host $host");
+}
+if (defined(os_cmd("true"))) {
+	$can_run_os_cmd=1;
+        print_report_ok("OS command OK");
+} else {
+        print_report_bad("Unable to run OS command, report will be incomplete");
+	add_advice("report","urgent","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication. This will allow to collect more system informations");
+}
+
+# Database connection
 print "Connecting to $host:$port database $database with user $username...\n";
 my $dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host;port=$port;",$username,$password,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
 
@@ -206,6 +233,7 @@ my $dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host;port=$port;",$usernam
 my $users=select_all_hashref("select * from pg_user","usename");
 my $i_am_super=$users->{$username}->{usesuper};
 my $settings=select_all_hashref("select * from pg_settings","name");
+my $rotational_disks=undef;
 my @Extensions;
 if (min_version('9.1')) {
 	@Extensions=select_one_column("select extname from pg_extension");
@@ -225,109 +253,126 @@ if ($i_am_super) {
 print_header_1("OS information");
 
 {
-	if ($host =~ /^\//) {
-		$os_cmd_prefix='';
-	} elsif ($host =~ /^localhost$/) {
-		$os_cmd_prefix='';
-	} elsif ($host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/) {
-		$os_cmd_prefix='';
-	} elsif ($host =~ /^[a-zA-Z0-9.-]+$/) {
-		$os_cmd_prefix="ssh $ssh_opts $host ";
-	} else {
-		die("Invalid host $host");
-	}
-	if (! defined(os_cmd("true"))) {
-		print_report_unknown("Unable to connect via ssh to $host. Please configure your ssh client to allow to connect to $host with key authentication, and accept key at first connection. For now you will not have OS information");
-		add_advice("report","urgent","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication. This will allow to collect more system informations");
+	if (! $can_run_os_cmd) {
+		print_report_unknown("Unable to run OS commands on $host. For now you will not have OS information");
 	} else {
 		print_report_info("OS: $os->{name} Version: $os->{version} Arch: $os->{arch}");
+
 		# OS Memory
-    if ($os->{name} eq 'darwin') {
-		  my $os_mem=os_cmd("top -l 1 -S -n 0");
-      $os->{mem_used} = standard_units($os_mem =~ /PhysMem: (\d+)([GMK])/);
-      $os->{mem_free} = standard_units($os_mem =~ /(\d+)([GMK]) unused\./);
-      $os->{mem_total} = $os->{mem_free} + $os->{mem_used};
-      $os->{swap_used} = standard_units($os_mem =~ /Swap:\W+(\d+)([GMK])/);
-      $os->{swap_free} = standard_units($os_mem =~ /Swap:\W+\d+[GMK] \+ (\d+)([GMK]) free/);
-      $os->{swap_total} = $os->{swap_free} + $os->{swap_used};
-    } else {
-		  my $os_mem=os_cmd("free -b");
-      ($os->{mem_total},$os->{mem_used},$os->{mem_free},$os->{mem_shared},$os->{mem_buffers},$os->{mem_cached})=($os_mem =~ /Mem:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
-      ($os->{swap_total},$os->{swap_used},$os->{swap_free})=($os_mem =~ /Swap:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
-    }
+		if ($os->{name} eq 'darwin') {
+			my $os_mem=os_cmd("top -l 1 -S -n 0");
+			$os->{mem_used} = standard_units($os_mem =~ /PhysMem: (\d+)([GMK])/);
+			$os->{mem_free} = standard_units($os_mem =~ /(\d+)([GMK]) unused\./);
+			$os->{mem_total} = $os->{mem_free} + $os->{mem_used};
+			$os->{swap_used} = standard_units($os_mem =~ /Swap:\W+(\d+)([GMK])/);
+			$os->{swap_free} = standard_units($os_mem =~ /Swap:\W+\d+[GMK] \+ (\d+)([GMK]) free/);
+			$os->{swap_total} = $os->{swap_free} + $os->{swap_used};
+		} else {
+			my $os_mem=os_cmd("free -b");
+			($os->{mem_total},$os->{mem_used},$os->{mem_free},$os->{mem_shared},$os->{mem_buffers},$os->{mem_cached})=($os_mem =~ /Mem:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
+			($os->{swap_total},$os->{swap_used},$os->{swap_free})=($os_mem =~ /Swap:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
+		}
 		print_report_info("OS total memory: ".format_size($os->{mem_total}));
 
-    # Overcommit
-    if ($os->{name} eq 'darwin') {
-      print_report_unknown("No information on memory overcommitment on MacOS.");
-    } else {
-      my $overcommit_memory=get_sysctl('vm.overcommit_memory');
-      if ($overcommit_memory != 2) {
-        print_report_bad("Memory overcommitment is allowed on the system. This can lead to OOM Killer killing some PostgreSQL process, which will cause a PostgreSQL server restart (crash recovery)");
-        add_advice('sysctl','urgent','set vm.overcommit_memory=2 in /etc/sysctl.conf and run sysctl -p to reload it. This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
-        my $overcommit_ratio=get_sysctl('vm.overcommit_ratio');
-        print_report_info("sysctl vm.overcommit_ratio=$overcommit_ratio");
-        if ($overcommit_ratio <= 50) {
-          print_report_bad("vm.overcommit_ratio is too small, you will not be able to use more than $overcommit_ratio*RAM+SWAP for applications");
-        } elsif ($overcommit_ratio > 90) {
-          print_report_bad("vm.overcommit_ratio is too high, you need to keep free space for the kernel");
-        }
-      } else {
-        print_report_ok("vm.overcommit_memory is good : no memory overcommitment");
-      }
-    }
-		# Hardware
-		my $hypervisor='';
-    if (!$os->{name} eq 'darwin') {
-		  my @dmesg=os_cmd("dmesg");
-      foreach my $line (@dmesg) {
-        if ($line =~ /vmware/i) {
-          $hypervisor='VMware';
-          last;
-        } elsif ($line =~ /kvm/i) {
-          $hypervisor='KVM';
-          last;
-        } elsif ($line =~ /xen/i) {
-          $hypervisor='XEN';
-          last;
-        } elsif ($line =~ /vbox/i) {
-          $hypervisor='VirtualBox';
-          last;
-        } elsif ($line =~ /hyper-v/i) {
-          $hypervisor='Hyper-V';
-          last;
-        }
-      }
+		# Overcommit
+		if ($os->{name} eq 'darwin') {
+			print_report_unknown("No information on memory overcommitment on MacOS.");
+		} else {
+			my $overcommit_memory=get_sysctl('vm.overcommit_memory');
+			if ($overcommit_memory != 2) {
+				print_report_bad("Memory overcommitment is allowed on the system. This can lead to OOM Killer killing some PostgreSQL process, which will cause a PostgreSQL server restart (crash recovery)");
+				add_advice('sysctl','urgent','set vm.overcommit_memory=2 in /etc/sysctl.conf and run sysctl -p to reload it. This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
+				my $overcommit_ratio=get_sysctl('vm.overcommit_ratio');
+				print_report_info("sysctl vm.overcommit_ratio=$overcommit_ratio");
+				if ($overcommit_ratio <= 50) {
+					print_report_bad("vm.overcommit_ratio is too small, you will not be able to use more than $overcommit_ratio*RAM+SWAP for applications");
+				} elsif ($overcommit_ratio > 90) {
+					print_report_bad("vm.overcommit_ratio is too high, you need to keep free space for the kernel");
+				}
+			} else {
+				print_report_ok("vm.overcommit_memory is good : no memory overcommitment");
+			}
+		}
 
-      if ($hypervisor) {
-        print_report_info("Running in $hypervisor hypervisor");
-      } else {
-        print_report_info("Running on physical machine");
-      }
-    }
+		# Hardware
+		my $hypervisor=undef;
+		if ($os->{name} ne 'darwin') {
+			my @dmesg=os_cmd("dmesg");
+			foreach my $line (@dmesg) {
+				if ($line =~ /vmware/i) {
+					$hypervisor='VMware';
+					last;
+				} elsif ($line =~ /kvm/i) {
+					$hypervisor='KVM';
+					last;
+				} elsif ($line =~ /xen/i) {
+					$hypervisor='XEN';
+					last;
+				} elsif ($line =~ /vbox/i) {
+					$hypervisor='VirtualBox';
+					last;
+				} elsif ($line =~ /hyper-v/i) {
+					$hypervisor='Hyper-V';
+					last;
+				}
+			}
+		}
+		if (defined($hypervisor)) {
+			print_report_info("Running in $hypervisor hypervisor");
+		} else {
+			print_report_info("Running on physical machine");
+		}
+
 		# I/O scheduler
-    my %active_schedulers;
-    if ($os->{name} eq 'darwin') {
-      print_report_unknown("No I/O scheduler information on MacOS");
-    } else {
-      opendir(my $sys_block,'/sys/block') or die("Unable to open /sys/block");
-      while (my $disk=readdir($sys_block)) {
-        next if ($disk eq '.' or $disk eq '..');
-        next if ($disk =~ /^sr/); # exclude cdrom
-        open(my $block_scheduler,"</sys/block/$disk/queue/scheduler") or die ("Unable to open /sys/block/$disk/queue/scheduler");
-        my $line=readline($block_scheduler);
-        close($block_scheduler);
-        next if ($line eq 'none');
-        foreach my $scheduler (split(/ /,$line)) {
-          if ($scheduler =~ /^\[([a-z]+)\]$/) {
-            $active_schedulers{$1}++;
-          }
-        }
-      }
-      closedir($sys_block);
-      print_report_info("Currently used I/O scheduler(s) : ".join(',',keys(%active_schedulers)));
-    }
-		if ($hypervisor && $active_schedulers{'cfq'}) {
+		my %active_schedulers;
+		if ($os->{name} eq 'darwin') {
+			print_report_unknown("No I/O scheduler information on MacOS");
+		} else {
+			my $disks_list=os_cmd("ls /sys/block/");
+			if (!defined $disks_list) {
+				print_report_unknown("Unable to identify disks");
+			} else {
+				foreach my $disk (split(/\n/,$disks_list)) {
+					next if ($disk eq '.' or $disk eq '..');
+					next if ($disk =~ /^sr/); # exclude cdrom
+
+					# Scheduler
+					my $disk_schedulers=os_cmd("cat /sys/block/$disk/queue/scheduler");
+					if (! defined($disk_schedulers)) {
+						print_report_unknown("Unable to identify scheduler for disk $disk");
+					} else {
+						chomp($disk_schedulers);
+						next if ($disk_schedulers eq 'none');
+						foreach my $scheduler (split(/ /,$disk_schedulers)) {
+							if ($scheduler =~ /^\[([a-z]+)\]$/) {
+								$active_schedulers{$1}++;
+							}
+						}
+					}
+
+					# Detect SSD or rotational disks
+					my $disk_is_rotational=1; # Default
+					if ($ssd) {
+						$disk_is_rotational=0;
+					} else {
+						my $disk_is_rotational=os_cmd("cat /sys/block/$disk/queue/rotational");
+						if (!defined($disk_is_rotational)) {
+							print_report_unknown("Unable to identify if disk $disk is rotational");
+						} else {
+							chomp($disk_is_rotational);
+						}
+					}
+					$rotational_disks+=$disk_is_rotational;
+				}
+			}
+			print_report_info("Currently used I/O scheduler(s) : ".join(',',keys(%active_schedulers)));
+		}
+		if (defined($hypervisor) && defined($rotational_disks) && $rotational_disks>0) {
+			die("TODO add --ssd flag to specify if disks are SSD in README");
+			print_report_warn("On virtual machines, /sys/block/DISK/queue/rotational is not accurate. Use the --ssd arg if the VM in running on a SSD storage");
+			add_advice("report","urgent","Use the --ssd arg if the VM in running on a SSD storage");
+		}
+		if (defined($hypervisor) && $active_schedulers{'cfq'}) {
 			print_report_bad("CFQ scheduler is bad on virtual machines (hypervisor and/or storage is already dooing I/O scheduling)");
 			add_advice("system","urgent","Configure your system to use noop or deadline io scheduler when on virtual machines :\necho deadline > /sys/block/sdX/queue/scheduler\nupdate your kernel parameters line with elevator=deadline to keep this parameter at next reboot");
 		}
@@ -626,21 +671,21 @@ print_header_1("General instance informations");
 {
 	print_header_2("Disk access");
 	my $fsync=get_setting('fsync');
-  my $wal_sync_method=get_setting('wal_sync_method');
+	my $wal_sync_method=get_setting('wal_sync_method');
 	if ($fsync eq 'on') {
 		print_report_ok("fsync is on");
 	} else {
 		print_report_bad("fsync is off. You can loss data in case of crash");
 		add_advice("checkpoint","urgent","set fsync to on. You can loose data in case of database crash !");
 	}
-  if ($os->{name} eq 'darwin') {
-    if ($wal_sync_method ne 'fsync_writethrough') {
-      print_report_bad("wal_sync_method is $wal_sync_method. Settings other than fsync_writethrough can lead to loss of data in case of crash");
-      add_advice("disk access","urgent","set wal_sync_method to fsync_writethrough to on. Otherwise, the disk write cache may prevent recovery after a crash.");
-    } else {
-  		print_report_ok("wal_sync_method is $wal_sync_method");
-    }
-  }
+	if ($os->{name} eq 'darwin') {
+		if ($wal_sync_method ne 'fsync_writethrough') {
+			print_report_bad("wal_sync_method is $wal_sync_method. Settings other than fsync_writethrough can lead to loss of data in case of crash");
+			add_advice("disk access","urgent","set wal_sync_method to fsync_writethrough to on. Otherwise, the disk write cache may prevent recovery after a crash.");
+		} else {
+			print_report_ok("wal_sync_method is $wal_sync_method");
+		}
+	}
 	if (get_setting('synchronize_seqscans') eq 'on') {
 		print_report_ok("synchronize_seqscans is on");
 	} else {
@@ -673,6 +718,20 @@ print_header_1("General instance informations");
 	} else {
 		print_report_ok("costs settings are defaults");
 	}
+
+	# random vs seq page cost on SSD
+	if (!defined($rotational_disks)) {
+		print_report_unknown("Information about rotational/SSD disk is unknown : unable to check random_page_cost and seq_page_cost tuning");
+	} else {
+		if ($rotational_disks == 0 and get_setting('random_page_cost')>get_setting('seq_page_cost')) {
+			print_report_warn("With SSD storage, set random_page_cost=seq_page_cost to help planer use more index scan");
+			add_advice("planner","medium","Set random_page_cost=seq_page_cost on SSD disks");
+		} elsif ($rotational_disks > 0 and get_setting('random_page_cost')<=get_setting('seq_page_cost')) {
+			print_report_bad("Without SSD storage, random_page_cost must be more than seq_page_cost");
+			add_advice("planner","urgent","Set random_page_cost to 2-4 times more than seq_page_cost without SSD storage");
+		}
+	}
+
 	# disabled plan fonctions
 	my @DisabledPlanFunctions=select_one_column("select name,setting from pg_settings where name like 'enable_%' and setting='off';");
 	if (@DisabledPlanFunctions > 0) {
@@ -1015,14 +1074,13 @@ sub try_load {
 sub get_sysctl {
 	my $name=shift;
 	$name=~s/\./\//g;
-	if (open(my $ctl,"</proc/sys/$name")) {
-		my $value=<$ctl>;
-		close($ctl);
+	my $value=os_cmd("cat /proc/sys/$name");
+	if (!defined($value)) {
+		print_report_unknown("Unable to read sysctl $name");
+		return undef;
+	} else {
 		chomp($value);
 		return $value;
-	} else {
-		print_report_warn("Unable to open sysctl $name");
-		return undef;
 	}
 }
 
