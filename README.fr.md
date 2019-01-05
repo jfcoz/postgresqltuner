@@ -173,3 +173,11 @@ Une requête peut utiliser plusieurs fois simultanément des buffers work_mem, e
 --wmp 300
 ```
 La valeur par défaut est 150%
+
+- Disques SSD :
+
+Dans un hyperviseur la détection de disques SSD n'est pas fiable.
+```
+--ssd
+```
+Permet d'indiquer que les disques sont SSD.
