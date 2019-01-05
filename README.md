@@ -203,3 +203,11 @@ A query can use many work_mem buffers depending on the query complexity. You can
 --wmp 300
 ```
 The default in 150%
+
+- SSD Disks :
+
+When running in an hypervisor with SSD disks, detection is not accurate.
+```
+--ssd
+```
+Allow to specify that disks are SSD

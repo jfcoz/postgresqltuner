@@ -368,7 +368,6 @@ print_header_1("OS information");
 			print_report_info("Currently used I/O scheduler(s) : ".join(',',keys(%active_schedulers)));
 		}
 		if (defined($hypervisor) && defined($rotational_disks) && $rotational_disks>0) {
-			die("TODO add --ssd flag to specify if disks are SSD in README");
 			print_report_warn("On virtual machines, /sys/block/DISK/queue/rotational is not accurate. Use the --ssd arg if the VM in running on a SSD storage");
 			add_advice("report","urgent","Use the --ssd arg if the VM in running on a SSD storage");
 		}
