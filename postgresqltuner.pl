@@ -56,7 +56,7 @@ if ($nmmc > 0) {
 	exit 1;
 }
 
-my $script_version="1.0.0";
+my $script_version="1.0.1";
 my $script_name="postgresqltuner.pl";
 my $min_s=60;
 my $hour_s=60*$min_s;
@@ -297,23 +297,30 @@ print_header_1("OS information");
 		# Hardware
 		my $hypervisor=undef;
 		if ($os->{name} ne 'darwin') {
-			my @dmesg=os_cmd("dmesg");
-			foreach my $line (@dmesg) {
-				if ($line =~ /vmware/i) {
-					$hypervisor='VMware';
-					last;
-				} elsif ($line =~ /kvm/i) {
-					$hypervisor='KVM';
-					last;
-				} elsif ($line =~ /xen/i) {
-					$hypervisor='XEN';
-					last;
-				} elsif ($line =~ /vbox/i) {
-					$hypervisor='VirtualBox';
-					last;
-				} elsif ($line =~ /hyper-v/i) {
-					$hypervisor='Hyper-V';
-					last;
+			my $systemd = os_cmd('systemd-detect-virt --vm');
+			if (defined($systemd)) {
+				if ($systemd =~ m/(\S+)/) {
+					$hypervisor = $1 if ($1 ne 'none');
+				}
+			} else {
+				my @dmesg=os_cmd("dmesg");
+				foreach my $line (@dmesg) {
+					if ($line =~ /vmware/i) {
+						$hypervisor='VMware';
+						last;
+					} elsif ($line =~ /kvm/i) {
+						$hypervisor='KVM';
+						last;
+					} elsif ($line =~ /xen/i) {
+						$hypervisor='XEN';
+						last;
+					} elsif ($line =~ /vbox/i) {
+						$hypervisor='VirtualBox';
+						last;
+					} elsif ($line =~ /hyper-v/i) {
+						$hypervisor='Hyper-V';
+						last;
+					}
 				}
 			}
 		}
