@@ -428,8 +428,8 @@ print_header_1("General instance informations");
 	if (grep(/pg_stat_statements/,@Extensions)) {
 		print_report_ok("Extension pg_stat_statements is enabled");
 	} else {
-		print_report_warn("Extensions pg_stat_statements is disabled");
-		add_advice("extension","low","Enable pg_stat_statements to collect statistics on all queries (not only queries longer than log_min_duration_statement in logs)");
+		print_report_warn("Extensions pg_stat_statements is disabled in database $database");
+		add_advice("extension","low","Enable pg_stat_statements in database $database to collect statistics on all queries (not only queries longer than log_min_duration_statement in logs)");
 	}
 }
 
