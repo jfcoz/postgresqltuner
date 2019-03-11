@@ -203,7 +203,7 @@ sub usage {
 }
 
 # OS command check
-print "Checking if OS commands is available on $host...\n";
+print "Checking if OS commands are available on $host...\n";
 my $os_cmd_prefix='LANG=C LC_ALL=C ';
 my $can_run_os_cmd=0;
 if ($host =~ /^\//) {
@@ -238,15 +238,15 @@ my @Extensions;
 if (min_version('9.1')) {
 	@Extensions=select_one_column("select extname from pg_extension");
 } else {
-	print_report_warn("pg_extension does not exists in ".get_setting('server_version'));
+	print_report_warn("pg_extension does not exist in ".get_setting('server_version'));
 }
 my %advices;
 
 if ($i_am_super) {
-	print_report_ok("User used for report have super rights");
+	print_report_ok("User used for report has superuser rights");
 } else {
-	print_report_bad("User used for report does not have super rights. Report will be incomplete");
-	add_advice("report","urgent","Use an account with super privileges to get a more complete report");
+	print_report_bad("User used for report does not have superuser rights. Report will be incomplete");
+	add_advice("report","urgent","Use an account with superuser privileges to get a more complete report");
 }
 
 # Report
@@ -395,17 +395,20 @@ print_header_1("General instance informations");
 		print_report_bad("You are using version $version which is a Release Candidate : do not use in production");
 		add_advice("version","urgent","Use a stable version (not a Release Candidate)");
 	}
-	if (min_version('10')) {
-		print_report_ok("You are using last $version");
+	if (min_version('11')) {
+		print_report_ok("You are using latest major $version");
+	} elsif (min_version('10')) {
+		print_report_warn("You are using version $version which is not the latest version");
+		add_advice("version","low","Upgrade to latest version");
 	} elsif (min_version('9.0')) {
 		print_report_warn("You are using version $version which is not the latest version");
-		add_advice("version","low","Upgrade to last version");
+		add_advice("version","low","Upgrade to latest version");
 	} elsif (min_version('8.0')) {
 		print_report_bad("You are using version $version which is very old");
-		add_advice("version","medium","Upgrade to last version");
+		add_advice("version","medium","Upgrade to latest version");
 	} else {
 		print_report_bad("You are using version $version which is very old and is not supported by this script");
-		add_advice("version","high","Upgrade to last version");
+		add_advice("version","high","Upgrade to latest version");
 	}
 }
 
@@ -488,7 +491,7 @@ print_header_1("General instance informations");
 	if ($superuser_reserved_connections == 0) {
 		print_report_bad("No connection slot is reserved for superuser. In case of connection saturation you will not be able to connect to investigate or kill connections");
 	} else {
-		print_report_info("$superuser_reserved_connections are reserved for super user (".format_percent($superuser_reserved_connections_ratio).")");
+		print_report_info("$superuser_reserved_connections connections are reserved for super user (".format_percent($superuser_reserved_connections_ratio).")");
 	}
 	if ($superuser_reserved_connections_ratio > 20) {
 		print_report_warn(format_percent($superuser_reserved_connections_ratio)." of connections are reserved for super user. This is too much and can limit other users connections");
@@ -581,7 +584,7 @@ print_header_1("General instance informations");
 		if ($percent_mem_usage < 60 and $shared_buffers_usage > 1) {
 			print_report_warn("Increase shared_buffers and/or effective_cache_size to use more memory");
 		} elsif ($percent_mem_usage > 90) {
-			print_report_warn("the sum of max_memory and effective_cache_size is too high, the planer can find bad plans if system cache is smaller than expected");
+			print_report_warn("the sum of max_memory and effective_cache_size is too high, the planner can find bad plans if system cache is smaller than expected");
 		}
 	}
 
@@ -602,7 +605,7 @@ print_header_1("General instance informations");
 	my $log_min_duration_statement=get_setting('log_min_duration_statement');
 	$log_min_duration_statement=~s/ms//;
 	if ($log_min_duration_statement == -1 ) {
-		print_report_warn("log of long queries is desactivated. It will be more difficult to optimize query performances");
+		print_report_warn("log of long queries is deactivated. It will be more difficult to optimize query performances");
 	} elsif ($log_min_duration_statement < 1000 ) {
 		print_report_bad("log_min_duration_statement=$log_min_duration_statement : all requests of more than 1 sec will be written in log. It can be disk intensive (I/O and space)");
 	} else {
@@ -717,12 +720,12 @@ print_header_1("General instance informations");
 ## Planner
 {
 	print_header_2("Planner");
-	# Modified costs settings
+	# Modified cost settings
 	my @ModifiedCosts=select_one_column("select name from pg_settings where name like '%cost%' and setting<>boot_val;");
 	if (@ModifiedCosts > 0) {
-		print_report_warn("some costs settings are not the defaults : ".join(',',@ModifiedCosts).". This can have bad impacts on performance. Use at your own risks");
+		print_report_warn("some cost settings are not the defaults : ".join(',',@ModifiedCosts).". This can have bad impacts on performance. Use at your own risk");
 	} else {
-		print_report_ok("costs settings are defaults");
+		print_report_ok("cost settings are defaults");
 	}
 
 	# random vs seq page cost on SSD
@@ -730,7 +733,7 @@ print_header_1("General instance informations");
 		print_report_unknown("Information about rotational/SSD disk is unknown : unable to check random_page_cost and seq_page_cost tuning");
 	} else {
 		if ($rotational_disks == 0 and get_setting('random_page_cost')>get_setting('seq_page_cost')) {
-			print_report_warn("With SSD storage, set random_page_cost=seq_page_cost to help planer use more index scan");
+			print_report_warn("With SSD storage, set random_page_cost=seq_page_cost to help planner use more index scan");
 			add_advice("planner","medium","Set random_page_cost=seq_page_cost on SSD disks");
 		} elsif ($rotational_disks > 0 and get_setting('random_page_cost')<=get_setting('seq_page_cost')) {
 			print_report_bad("Without SSD storage, random_page_cost must be more than seq_page_cost");
@@ -809,7 +812,7 @@ print_header_1("Database information for database $database");
 		my $shared_buffer_idx_hit_rate=select_one_value("select sum(idx_blks_hit)*100/(sum(idx_blks_read)+sum(idx_blks_hit)+1) from pg_statio_all_tables ;");
 		print_report_info("shared_buffer_idx_hit_rate: ".format_percent($shared_buffer_idx_hit_rate));
 		if ($shared_buffer_idx_hit_rate > 99.99) {
-			print_report_info("shared buffer idx hit rate too high. You can reducte shared_buffer if you need");
+			print_report_info("shared buffer idx hit rate too high. You can safely reduce shared_buffer");
 		} elsif ($shared_buffer_idx_hit_rate>98) {
 			print_report_ok("Shared buffer idx hit rate is very good");
 		} elsif ($shared_buffer_idx_hit_rate>90) {
@@ -842,8 +845,8 @@ print_header_1("Database information for database $database");
 			@Unused_indexes=select_one_column("select relname||'.'||indexrelname from pg_stat_user_indexes where idx_scan=0 ORDER BY relname, indexrelname");
 		}
 		if (@Unused_indexes > 0) {
-			print_report_warn("Some indexes are unused since last statistics: @Unused_indexes");
-			add_advice("index","medium","You have unused indexes in the database since last statistics. Please remove them if they are never use");
+			print_report_warn("Some indexes are unused since the last statistics run: @Unused_indexes");
+			add_advice("index","medium","You have unused indexes in the database since the last statistics run. Please remove them if they are not used");
 		} else {
 			print_report_ok("No unused indexes");
 		}
@@ -855,10 +858,10 @@ print_header_1("Database information for database $database");
 	print_header_2("Procedures");
 	# Procedures with default cost
 	{
-		my @Default_cost_procs=select_one_column("select n.nspname||'.'||p.proname from pg_catalog.pg_proc p left join pg_catalog.pg_namespace n on n.oid = p.pronamespace where pg_catalog.pg_function_is_visible(p.oid) and n.nspname not in ('pg_catalog','information_schema') and p.prorows<>1000 and p.procost<>10");
+		my @Default_cost_procs=select_one_column("select n.nspname||'.'||p.proname from pg_catalog.pg_proc p left join pg_catalog.pg_namespace n on n.oid = p.pronamespace where pg_catalog.pg_function_is_visible(p.oid) and n.nspname not in ('pg_catalog','information_schema','sys') and p.prorows<>1000 and p.procost<>10 and p.proname not like 'uuid_%' and p.proname != 'pg_stat_statements_reset'");
 		if (@Default_cost_procs > 0) {
-			print_report_warn("Some user procedures does not have custom cost and rows settings : @Default_cost_procs");
-			add_advice("proc","low","You have custom procedures with default cost and rows setting. Please reconfigure them with specific values to help the planer");
+			print_report_warn("Some user procedures do not have custom cost and rows settings : @Default_cost_procs");
+			add_advice("proc","low","You have custom procedures with default cost and rows setting. Please reconfigure them with specific values to help the planner");
 		} else {
 			print_report_ok("No procedures with default costs");
 		}
@@ -993,7 +996,7 @@ sub print_header {
 sub get_setting {
 	my $name=shift;
 	if (!defined($settings->{$name})) {
-		print STDERR "ERROR: setting $name does not exists\n";
+		print STDERR "ERROR: setting $name does not exist\n";
 		exit 1;
 	} else {
     return standard_units($settings->{$name}->{setting}, $settings->{$name}->{unit});
@@ -1098,7 +1101,7 @@ sub add_advice {
 
 sub print_advices {
 	print "\n";
-	print_header_1("Configuration advices");
+	print_header_1("Configuration advice");
 	my $advice_count=0;
 	foreach my $category (sort(keys(%advices))) {
 		print_header_2($category);
