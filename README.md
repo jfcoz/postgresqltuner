@@ -132,8 +132,8 @@ Download :
 ```
 wget -O postgresqltuner.pl postgresqltuner.pl
 wget -O postgresqltuner.pl https://postgresqltuner.pl
-curl -o postgresqltuner.pl postgresqltuner.pl
-curl -o postgresqltuner.pl https://postgresqltuner.pl
+curl -Lo postgresqltuner.pl postgresqltuner.pl
+curl -Lo postgresqltuner.pl https://postgresqltuner.pl
 ```
 
 Add permissions :
