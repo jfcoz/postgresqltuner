@@ -130,10 +130,8 @@ cpan DBD-pg
 Download :
 
 ```
-wget -O postgresqltuner.pl postgresqltuner.pl
-wget -O postgresqltuner.pl https://postgresqltuner.pl
-curl -o postgresqltuner.pl postgresqltuner.pl
-curl -o postgresqltuner.pl https://postgresqltuner.pl
+wget -O postgresqltuner.pl https://raw.githubusercontent.com/jfcoz/postgresqltuner/master/postgresqltuner.pl
+curl -o postgresqltuner.pl https://raw.githubusercontent.com/jfcoz/postgresqltuner/master/postgresqltuner.pl
 ```
 
 Add permissions :
