@@ -171,7 +171,7 @@ docker run -it --rm --link your-postgresql-container:dbhost jfcoz/postgresqltune
 
 ### SSH
 
-When using it remotly, postgresqltuner.pl will use ssh to collect OS informations. You must configure ssh to connect to remote host with private key authentication.
+When using it remotely, postgresqltuner.pl will use ssh to collect OS informations. You must configure ssh to connect to remote host with private key authentication.
 
 You can add options to ssh via two ways :
 
