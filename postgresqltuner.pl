@@ -351,7 +351,7 @@ print_header_1("OS information");
 						chomp($disk_schedulers);
 						next if ($disk_schedulers eq 'none');
 						foreach my $scheduler (split(/ /,$disk_schedulers)) {
-							if ($scheduler =~ /^\[([a-z]+)\]$/) {
+							if ($scheduler =~ /^\[([a-z-]+)\]$/) {
 								$active_schedulers{$1}++;
 							}
 						}
