@@ -391,9 +391,9 @@ print_header_1("General instance informations");
 {
 	print_header_2("Version");
 	my $version=get_setting('server_version');
-	if ($version=~/rc/) {
-		print_report_bad("You are using version $version which is a Release Candidate : do not use in production");
-		add_advice("version","urgent","Use a stable version (not a Release Candidate)");
+	if ($version=~/(devel|rc)/) {
+		print_report_bad("You are using version $version which is a Development Snapshot or Release Candidate: do not use in production");
+		add_advice("version","urgent","Use a stable version (not a Development Snapshot or Release Candidate)");
 	}
 	if (min_version('11')) {
 		print_report_ok("You are using latest major $version");
@@ -880,7 +880,7 @@ exit(0);
 sub min_version {
 	my $min_version=shift;
 	my $cur_version=get_setting('server_version');
-	$cur_version=~s/rc.*//; # clean RC
+	$cur_version=~s/(devel|rc).*//; # clean devel or RC
 	my ($min_major,$min_minor)=split(/\./,$min_version);
 	my ($cur_major,$cur_minor)=split(/\./,$cur_version);
 	if ($cur_major > $min_major) {
