@@ -607,7 +607,7 @@ print_header_1("General instance informations");
 	if ($log_min_duration_statement == -1 ) {
 		print_report_warn("log of long queries is deactivated. It will be more difficult to optimize query performances");
 	} elsif ($log_min_duration_statement < 1000 ) {
-		print_report_bad("log_min_duration_statement=$log_min_duration_statement: all requests of more than 1 sec will be written in log. It can be disk intensive (I/O and space)");
+		print_report_bad("log_min_duration_statement=$log_min_duration_statement: all requests less than 1 sec will be written in log. It can be disk intensive (I/O and space)");
 	} else {
 		print_report_ok("long queries will be logged");
 	}
