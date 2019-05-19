@@ -587,7 +587,42 @@ print_header_1("General instance informations");
 			print_report_warn("the sum of max_memory and effective_cache_size is too high, the planner can find bad plans if system cache is smaller than expected");
 		}
 	}
+	# Hugepages
+	print_header_2("Huge pages");
+	if ($os->{name} eq 'darwin') {
+		print_report_unknown("No information on huge pages on MacOS.");
+	} else {
+		my $nr_hugepages=get_sysctl('vm.nr_hugepages');
+		if ($nr_hugepages == 0) {
+			print_report_bad("No Huge Pages avaialble on the system");
+		}
+		if (get_setting('huge_pages') eq 'on') {
+			print_report_ok("huge_pages enabled in PostgreSQL");
+		} else {
+			print_report_bad("huge_pages disabled in PostgreSQL");
+			add_advice("hugepages","medium","Enable huge_pages in PostgreSQL to consume system Huge Pages");
+		}
+		my $os_huge=os_cmd("cat /proc/meminfo |grep ^Huge");
+		($os->{HugePages_Total})=($os_huge =~ /HugePages_Total:\s+([0-9]+)/);
+		($os->{HugePages_Free})=($os_huge =~ /HugePages_Free:\s+([0-9]+)/);
+		($os->{Hugepagesize})=($os_huge =~ /Hugepagesize:\s+([0-9]+)/);
+		print_report_info("Hugepagesize is ".$os->{Hugepagesize}." kB");
+		print_report_info("HugePages_Total ".$os->{HugePages_Total}." pages");
+		print_report_info("HugePages_Free ".$os->{HugePages_Free}." pages");
 
+		my $pg_pid=select_one_value("SELECT pg_backend_pid();");
+		my $peak=os_cmd("grep ^VmPeak /proc/".$pg_pid."/status | awk '{ print \$2 }'");
+		chomp($peak);
+		my $suggesthugepages=$peak/$os->{Hugepagesize};
+		print_report_info("Suggested number of Huge Pages: ".int($suggesthugepages + 0.5)." (Consumption peak: ".$peak." / Huge Page size: ".$os->{Hugepagesize}.")");
+		if ($os->{HugePages_Total} < int($suggesthugepages + 0.5)) {
+			add_advice("hugepages","medium","set vm.nr_hugepages=".int($suggesthugepages + 0.5)." in /etc/sysctl.conf and run sysctl -p to reload it. This will allocate huge pages (may require system reboot).");
+		}
+
+		if ($os->{Hugepagesize} == 2048) {
+			add_advice("hugepages","low","Change Huge Pages size from 2MB to 1GB");
+		}
+	}
 }
 
 ## Logs
