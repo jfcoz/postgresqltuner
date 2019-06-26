@@ -398,10 +398,10 @@ print_header_1("General instance informations");
 	if (min_version('11')) {
 		print_report_ok("You are using latest major $version");
 	} elsif (min_version('10')) {
-		print_report_warn("You are using version $version which is not the latest version");
+		print_report_warn("You are using version $version which is not the latest major version");
 		add_advice("version","low","Upgrade to latest version");
 	} elsif (min_version('9.0')) {
-		print_report_warn("You are using version $version which is not the latest version");
+		print_report_warn("You are using version $version which is not the latest major version");
 		add_advice("version","low","Upgrade to latest version");
 	} elsif (min_version('8.0')) {
 		print_report_bad("You are using version $version which is very old");
