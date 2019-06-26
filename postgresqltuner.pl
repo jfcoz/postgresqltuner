@@ -268,7 +268,15 @@ print_header_1("OS information");
 			$os->{swap_free} = standard_units($os_mem =~ /Swap:\W+\d+[GMK] \+ (\d+)([GMK]) free/);
 			$os->{swap_total} = $os->{swap_free} + $os->{swap_used};
 		} else {
-			my $os_mem=os_cmd("free -b");
+			my $os_mem="";
+			if($os->{name} eq 'freebsd')
+			{
+				$os_mem=os_cmd("freecolor -o");
+			}
+			else
+			{
+				$os_mem=os_cmd("free -b");
+			}
 			($os->{mem_total},$os->{mem_used},$os->{mem_free},$os->{mem_shared},$os->{mem_buffers},$os->{mem_cached})=($os_mem =~ /Mem:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
 			($os->{swap_total},$os->{swap_used},$os->{swap_free})=($os_mem =~ /Swap:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
 		}
