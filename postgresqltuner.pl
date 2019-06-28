@@ -784,7 +784,7 @@ print_header_1("General instance informations");
 		}
 	}
 
-	# disabled plan fonctions
+	# disabled plan functions
 	my @DisabledPlanFunctions=select_one_column("select name,setting from pg_settings where name like 'enable_%' and setting='off';");
 	if (@DisabledPlanFunctions > 0) {
 		print_report_bad("some plan features are disabled: ".join(',',@DisabledPlanFunctions));
