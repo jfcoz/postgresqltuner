@@ -211,3 +211,7 @@ When running in an hypervisor with SSD disks, detection is not accurate.
 --ssd
 ```
 Allow to specify that disks are SSD
+
+
+```
+--Special FreeBSD setting
