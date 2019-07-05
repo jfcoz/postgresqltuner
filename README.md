@@ -219,4 +219,4 @@ This setting is configured via /etc/sysctl.conf.
 
 Change 'vm.overcommit: 0 ' to 'vm.overcommit: 1'.
 
-Also, install freecolor.
+Also, install [freecolor](https://kukunotes.wordpress.com/2014/11/17/freebsd-view-memory-usage/).
