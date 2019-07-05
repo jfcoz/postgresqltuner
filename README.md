@@ -212,6 +212,11 @@ When running in an hypervisor with SSD disks, detection is not accurate.
 ```
 Allow to specify that disks are SSD
 
+## Special FreeBSD settings
 
-```
---Special FreeBSD setting
+FreeBSD has support for virtual memory over commit , using vm.overcommit configuration setting.
+This setting is configured via /etc/sysctl.conf.
+
+Change 'vm.overcommit: 0 ' to 'vm.overcommit: 1'.
+
+Also, install freecolor.
