@@ -146,7 +146,7 @@ And run script :
 ```
 postgresqltuner.pl --host=dbhost --database=testdb --user=username --password=qwerty
 ```
-- Via unix socket as postgres sytem user :
+- Via unix socket as postgres system user :
 ```
 postgres$ postgresqltuner.pl --host=/var/run/postgresql  # PostgreSQL socket directory
 ```
