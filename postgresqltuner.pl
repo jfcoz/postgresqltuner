@@ -601,8 +601,9 @@ print_header_1("General instance informations");
 		print_report_unknown("No information on huge pages on MacOS.");
 	} else {
 		my $nr_hugepages=get_sysctl('vm.nr_hugepages');
-		if ($nr_hugepages == 0) {
+		if (!defined $nr_hugepages || $nr_hugepages == 0) {
 			print_report_bad("No Huge Pages available on the system");
+			last;
 		}
 		if (get_setting('huge_pages') eq 'on') {
 			print_report_ok("huge_pages enabled in PostgreSQL");
