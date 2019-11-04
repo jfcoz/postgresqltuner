@@ -197,3 +197,8 @@ Le script ne détecte pas toujours parfaitement l'éventuel hyperviseur ou le st
 --ssd
 ```
 Indique que le stockage employé par PostreSQL est SSD.
+
+```
+--nocolor
+```
+Le report ne sera pas colorisé. Utile afin de le sauver dans un fichier, grâce à une redirection shell (postgresqltuner.pl>rapport_pg_$(date +%Y%m%d_%H%M%S).txt).
