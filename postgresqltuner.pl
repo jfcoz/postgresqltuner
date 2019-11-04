@@ -606,8 +606,8 @@ print_header_1("General instance informations");
 	}
 	# Hugepages
 	print_header_2("Huge Pages");
-	if ($os->{name} eq 'darwin') {
-		print_report_unknown("No information on Huge Pages on MacOS.");
+  if ($os->{name} ne 'linux') {
+		print_report_unknown("No Huge Pages on this OS.");
 	} else {
 		my $nr_hugepages=get_sysctl('vm.nr_hugepages');
 		if (!defined $nr_hugepages || $nr_hugepages == 0) {
@@ -615,12 +615,15 @@ print_header_1("General instance informations");
 			last;
 		}
 		if (get_setting('huge_pages') eq 'on') {
-			print_report_ok("huge_pages enabled in PostgreSQL");
-		} else {
-			print_report_bad("huge_pages disabled in PostgreSQL");
-			add_advice("hugepages","medium","Enable huge_pages in PostgreSQL to enhance memory allocation performance, and if necessary also enable them at OS level");
+			print_report_ok("huge_pages=on, therefore PostgreSQL needs Huge Pages");
 		}
-		my $os_huge=os_cmd("cat /proc/meminfo |grep ^Huge");
+    elsif	(get_setting('huge_pages') eq 'try') {
+			print_report_bad("huge_pages=on, therefore PostgreSQL will try to use Huge Pages, if they are enabled");
+		}
+    else {
+      add_advice("hugepages","medium","Enable huge_pages to enhance memory allocation performance, and if necessary also enable them at OS level");
+    }
+    my $os_huge=os_cmd("cat /proc/meminfo |grep ^Huge");
 		($os->{HugePages_Total})=($os_huge =~ /HugePages_Total:\s+([0-9]+)/);
 		($os->{HugePages_Free})=($os_huge =~ /HugePages_Free:\s+([0-9]+)/);
 		($os->{Hugepagesize})=($os_huge =~ /Hugepagesize:\s+([0-9]+)/);
