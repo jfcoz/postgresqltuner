@@ -203,7 +203,7 @@ sub usage {
 	print STDERR "  --wmp: average number of work_mem buffers per connection in percent (default 150)\n";
 	print STDERR "  --sshopt: pass options to ssh (example --sshopt=Port=2200)\n";
 	print STDERR "  --ssd: declare all storage units (used by PostgreSQL) as non rotational\n";
-	print STDERR "  --nocolor: do not colorize the text report\n";
+	print STDERR "  --nocolor: do not colorize the report\n";
 	exit $return;
 }
 
