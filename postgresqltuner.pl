@@ -259,7 +259,7 @@ print_header_1("OS information");
 
 {
 	if (! $can_run_os_cmd) {
-		print_report_unknown("Unable to run OS commands on $host.  You will not obtain OS-related information");
+		print_report_unknown("Unable to run OS commands on $host.  You will obtain no OS-related information");
 	} else {
 		print_report_info("OS: $os->{name} Version: $os->{version} Arch: $os->{arch}");
 
@@ -294,7 +294,7 @@ print_header_1("OS information");
 			my $overcommit_memory=get_sysctl('vm.overcommit_memory');
 			if ($overcommit_memory != 2) {
 				print_report_bad("Memory overcommitment is allowed on the system.  This may lead the OOM Killer to kill at least one PostgreSQL process, DANGER!");
-				add_advice('sysctl','urgent','set vm.overcommit_memory=2 in /etc/sysctl.conf and run sysctl -p to enforce it.  This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
+				add_advice('sysctl','urgent','set vm.overcommit_memory=2 in /etc/sysctl.conf and invoke  sysctl -p /etc/sysctl.conf  to enforce it.  This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
 				my $overcommit_ratio=get_sysctl('vm.overcommit_ratio');
 				print_report_info("sysctl vm.overcommit_ratio=$overcommit_ratio");
 				if ($overcommit_ratio <= 50) {
@@ -352,7 +352,7 @@ print_header_1("OS information");
 		} else {
 			my $disks_list=os_cmd("ls /sys/block/");
 			if (!defined $disks_list) {
-				print_report_unknown("Unable to identify the storage");
+				print_report_unknown("Unable to explore storage unit(s) system attributes");
 			} else {
 				foreach my $disk (split(/\n/,$disks_list)) {
 					next if ($disk eq '.' or $disk eq '..');
@@ -597,7 +597,7 @@ print_header_1("General instance informations");
 		}
 		# total ram usage with effective_cache_size
 		my $percent_mem_usage=($max_memory+$effective_cache_size-$shared_buffers)*100/$os->{mem_total};
-		print_report_info("max memory+effective_cache_size (less shared_buffers) is ".format_percent($percent_mem_usage)." of the amount of RAM");
+		print_report_info("max memory + effective_cache_size - shared_buffers is ".format_percent($percent_mem_usage)." of the amount of RAM");
 		if ($percent_mem_usage < 60 and $shared_buffers_usage > 1) {
 			print_report_warn("Increase shared_buffers to let PostgreSQL directly use more memory, especially if the machine is dedicated to PostgreSQL");
 		} elsif ($percent_mem_usage > 90) {
@@ -606,7 +606,7 @@ print_header_1("General instance informations");
 	}
 	# Hugepages
 	print_header_2("Huge Pages");
-  if ($os->{name} ne 'linux') {
+  if (($os->{name} ne 'linux') && ($os->{name} ne 'freebsd')) { # not sure about FreeBSD
 		print_report_unknown("No Huge Pages on this OS.");
 	} else {
 		my $nr_hugepages=get_sysctl('vm.nr_hugepages');
@@ -623,7 +623,7 @@ print_header_1("General instance informations");
     else {
       add_advice("hugepages","medium","Enable huge_pages to enhance memory allocation performance, and if necessary also enable them at OS level");
     }
-    my $os_huge=os_cmd("cat /proc/meminfo |grep ^Huge");
+    my $os_huge=os_cmd("grep ^Huge /proc/meminfo"); # was it some useless use of cat?
 		($os->{HugePages_Total})=($os_huge =~ /HugePages_Total:\s+([0-9]+)/);
 		($os->{HugePages_Free})=($os_huge =~ /HugePages_Free:\s+([0-9]+)/);
 		($os->{Hugepagesize})=($os_huge =~ /Hugepagesize:\s+([0-9]+)/);
@@ -637,7 +637,7 @@ print_header_1("General instance informations");
 		my $suggesthugepages=$peak/$os->{Hugepagesize};
 		print_report_info("Suggested number of Huge Pages: ".int($suggesthugepages + 0.5)." (Consumption peak: ".$peak." / Huge Page size: ".$os->{Hugepagesize}.")");
 		if ($os->{HugePages_Total} < int($suggesthugepages + 0.5)) {
-			add_advice("hugepages","medium","set vm.nr_hugepages=".int($suggesthugepages + 0.5)." in /etc/sysctl.conf and run sysctl -p to reload it.  This will allocate Huge Pages (it may require a system reboot).");
+			add_advice("hugepages","medium","set vm.nr_hugepages=".int($suggesthugepages + 0.5)." in /etc/sysctl.conf and invoke  sysctl -p /etc/sysctl.conf  to reload it.  This will allocate Huge Pages (it may require a system reboot).");
 		}
 
 		if ($os->{Hugepagesize} == 2048) { # TODO: intermediate size?
