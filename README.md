@@ -7,7 +7,7 @@
 
 ## Demo
 
-Here is a sample output :
+Here is a sample output:
 
 ~~~
 postgresqltuner.pl version 0.0.8
@@ -110,13 +110,13 @@ You have unused indexes in the database since last statistics. Please remove the
 
 ### Install it
 
-need perl with module `DBD::Pg`
+It needs Perl with `DBD::Pg` module
 
-- On Debian or derivated :
+- On Debian or a derivative:
 ```
 apt-get install libdbd-pg-perl
 ```
-- On Fedora or deriavated :
+- On Fedora or a derivative:
 ```
 yum install perl-DBD-Pg
 ```
@@ -127,7 +127,7 @@ brew install perl
 cpan DBD-pg
 ```
 
-Download :
+Download:
 
 ```
 wget -O postgresqltuner.pl postgresqltuner.pl
@@ -136,51 +136,52 @@ curl -Lo postgresqltuner.pl postgresqltuner.pl
 curl -Lo postgresqltuner.pl https://postgresqltuner.pl
 ```
 
-Add permissions :
+Add permissions:
 ```
 chmod +x postgresqltuner.pl
 ```
 
-And run script :
-- Via network :
+And invoke on the command line, as the "postgres" user, either:
+- By connecting to the PostgreSQL server via TCP:
 ```
 postgresqltuner.pl --host=dbhost --database=testdb --user=username --password=qwerty
 ```
-- Via unix socket as postgres system user :
+- ... or via an Unix socket:
 ```
 postgres$ postgresqltuner.pl --host=/var/run/postgresql  # PostgreSQL socket directory
 ```
 
-If available postgresqltuner.pl will use standard PostgreSQL variables like `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSERNAME`, and password from `~/.pgpass` file.
+If available, postgresqltuner.pl will use standard PostgreSQL variables like `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSERNAME`, and password from the `~/.pgpass` file.
 
 
-### With docker
+### With Docker
 
- - Via network :
+Invoke on the command-line either:
+ - via the plain network:
 ```
 docker run -it --rm jfcoz/postgresqltuner --host=dbhost --user=username --password=pass --database=testdb
 ```
- - Via network with ssh access :
+ - ... or via ssh:
 ```
 docker run -it --rm -v $HOME/.ssh:/root/.ssh jfcoz/postgresqltuner --host=dbhost --user=username --password=pass --database=testdb
 ```
- - Via docker link :
+ - ... or via a docker link:
 ```
 docker run -it --rm --link your-postgresql-container:dbhost jfcoz/postgresqltuner --host=dbhost --user=username --password=pass --database=testdb
 ```
 
 ### SSH
 
-When using it remotely, postgresqltuner.pl will use ssh to collect OS informations. You must configure ssh to connect to remote host with private key authentication.
+When using it remotely, postgresqltuner.pl will use ssh to collect OS informations. You should configure ssh to connect to the remote host with private key authentication.
 
-You can add options to ssh via two ways :
+You can add options to ssh:
 
-- Option :
+- ... as commend-line options:
 ```
 --sshopt=Port=2200 --sshopt=IdentityFile=...
 ```
 
-- Configure your SSH client via ~/.ssh/config :
+- or in the configuration file "~/.ssh/config":
 ```
 Host my-database-host
 	IdentityFile=...
@@ -189,32 +190,32 @@ Host my-database-host
 
 ### Passwords
 
-For better security use a `~/.pgpass` file containing passwords, so password will not be saved in the shell history nor in the process list. [.pgpass documentation](https://www.postgresql.org/docs/current/static/libpq-pgpass.html)
+For better security use a `~/.pgpass` file containing passwords, so no password will be saved in your shell history nor visible in a process name. [.pgpass documentation](https://www.postgresql.org/docs/current/static/libpq-pgpass.html)
 ```
 host:port:database:username:password
 ```
 
 ## Options
 
-- Average number of work_mem buffer per connection :
+- Average number of work_mem buffer per connection:
 
-A query can use many work_mem buffers depending on the query complexity. You can configure the average number of work_mem buffers per connection (in percent):
+A query can use many work_mem buffers, depending on its complexity. You can configure the average number of work_mem buffers per connection (in percent):
 ```
 --wmp 300
 ```
 The default in 150%
 
-- SSD Disks :
+- SSD storage:
 
-When running in an hypervisor with SSD disks, detection is not accurate.
+When running in an hypervisor with SSD, detection is not accurate.
 ```
 --ssd
 ```
-Allow to specify that disks are SSD
+Allow to specify that storage is on SSD
 
 ## Special FreeBSD settings
 
-FreeBSD has support for virtual memory over commit , using vm.overcommit configuration setting.
+FreeBSD has support for virtual memory over commit, using vm.overcommit configuration setting.
 This setting is configured via /etc/sysctl.conf.
 
 Change 'vm.overcommit: 0 ' to 'vm.overcommit: 1'.
