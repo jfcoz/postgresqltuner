@@ -86,7 +86,9 @@ GetOptions (
 	"sshopt=s"    => \@Ssh_opts,
             "ssd"         => \$ssd,
             "nocolor" => \$nocolor,
-) or usage(1);
+            #todo: option --dedicated, refined as a percentage (100:full dedicated, 50: half...).  Refinement: dedication per resource (storage, RAM, CPU...)
+            #todo: option --interactive
+           ) or usage(1);
 
 $ENV{"ANSI_COLORS_DISABLED"}=1 if $nocolor;
 
@@ -203,12 +205,11 @@ sub usage {
 	print STDERR "  --wmp: average number of work_mem buffers per connection in percent (default 150)\n";
 	print STDERR "  --sshopt: pass options to ssh (example --sshopt=Port=2200)\n";
 	print STDERR "  --ssd: declare all physical storage units (used by PostgreSQL) as non rotational\n";
-	print STDERR "  --nocolor: do not colorize the report\n";
+	print STDERR "  --nocolor: do not colorize my report\n";
 	exit $return;
 }
 
 # OS command check
-print "Checking if OS commands are available on $host...\n";
 my $os_cmd_prefix='LANG=C LC_ALL=C ';
 my $can_run_os_cmd=0;
 if ($host =~ /^\//) {
@@ -217,16 +218,16 @@ if ($host =~ /^\//) {
 	$os_cmd_prefix='';
 } elsif ($host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/) {
 	$os_cmd_prefix='';
-} elsif ($host =~ /^[a-zA-Z0-9.-]+$/) {
+} elsif ($host =~ /^[a-zA-Z0-9.-_]+$/) {
 	$os_cmd_prefix="ssh $ssh_opts $host ";
 } else {
-	die("Invalid host $host");
+	die("Invalid host '$host'");
 }
 if (defined(os_cmd("true"))) {
 	$can_run_os_cmd=1;
-  print_report_ok("I can run OS commands");
+  print_report_ok("I can invoke executables");
 } else {
-        print_report_bad("Unable to run OS command, the report will be incomplete");
+  print_report_bad("I CANNOT invoke executables, my report will be incomplete");
 	add_advice("reporting","high","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication.  This will allow it to collect more system informations");
 }
 
@@ -254,9 +255,9 @@ if (min_version('9.1')) {
 my %advices;
 
 if ($i_am_super) {
-	print_report_ok("The user acount used for reporting has superuser rights on this PostgreSQL instance");
+	print_report_ok("The user acount used by me for reporting has superuser rights on this PostgreSQL instance");
 } else {
-	print_report_bad("The user account used for reporting does not have Postgres superuser rights.  The report will be incomplete");
+	print_report_bad("The user account used by me for reporting does not have Postgres superuser rights.  My report will be incomplete");
 	add_advice("reporting","high","Use an account with Postgres superuser privileges to get a more complete report");
 }
 
@@ -295,16 +296,16 @@ print_header_1("OS information");
 
 		# Overcommit
 		if ($os->{name} eq 'darwin') {
-			print_report_unknown("No information on memory overcommitment on MacOS.");
+			print_report_unknown("No information on memory overcommitment on MacOS");
 		} else {
 			my $overcommit_memory=get_sysctl('vm.overcommit_memory');
 			if ($overcommit_memory != 2) {
 				print_report_bad("Memory overcommitment is allowed on the system.  This may lead the OOM Killer to kill at least one PostgreSQL process, DANGER!");
-				add_advice('system','high','set vm.overcommit_memory=2 in /etc/sysctl.conf and invoke  sysctl -p /etc/sysctl.conf  to enforce it.  This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
-				my $overcommit_ratio=get_sysctl('vm.overcommit_ratio');
+				add_advice('system','high',"set vm.overcommit_memory=2 in /etc/sysctl.conf and invoke  sysctl -p /etc/sysctl.conf  to enforce it.  This will disable memory overcommitment and avoid having a PostgreSQL process killed by the OOM killer");
+				my $overcommit_ratio=get_sysctl('vm.overcommit_ratio'); # expressed as a percentage
 				print_report_info("sysctl vm.overcommit_ratio=$overcommit_ratio");
 				if ($overcommit_ratio <= 50) {
-					print_report_bad("vm.overcommit_ratio is too low, you will not be able to use more than $overcommit_ratio*RAM+SWAP for applications");
+					print_report_bad("vm.overcommit_ratio is too low, you will not be able to use more than (${overcommit_ratio}/100)*RAM+SWAP for applications");
 				} elsif ($overcommit_ratio > 90) {
 					print_report_bad("vm.overcommit_ratio is too high, you need to keep free memory");
 				}
@@ -412,8 +413,8 @@ print_header_1("General instance informations");
 {
   print_header_2("PostgreSQL version");
   my $version=get_nonvolatile_setting('server_version');
-  if ($version=~/(devel|rc)/) {
-    print_report_bad("You are using PostreSQL version $version which is a Development Snapshot or Release Candidate");
+  if ($version=~/(devel|rc|beta)/) {
+    print_report_bad("You are using PostreSQL version $version which is a Development Snapshot, Beta or Release Candidate");
     add_advice("version","high","If this instance is a production server, then only use stable versions");
   }
   my $pg_upgrade="Upgrade to the latest stable PostgreSQL version";
@@ -443,7 +444,7 @@ print_header_1("General instance informations");
 	my $uptime=select_one_value("select extract(epoch from now()-pg_postmaster_start_time())");
 	print_report_info("Service uptime: ".format_epoch_to_time($uptime));
 	if ($uptime < $day_s) {
-		print_report_warn("Uptime less than 1 day.  My report may be inaccurate");
+		print_report_warn("Uptime less than 1 day.  This report may be inaccurate");
 	}
 }
 
@@ -581,12 +582,17 @@ print_header_1("General instance informations");
 	print_report_info("Cumulated size of all databases: ".format_size($all_databases_size));
 	# shared_buffer usage
 	my $shared_buffers_usage=$all_databases_size/$shared_buffers;
-	if ($shared_buffers_usage < 0.7) { # todo: AFAIK shared_buffers may also contain various non-data, for example indexes, therefore the total (cumulated) database size is only one parameter
+	if ($shared_buffers_usage < 0.7) { # todo: AFAIK shared_buffers may also contain various non-data, for example indexes, therefore the total (cumulated) database size is only one parameter.  The question now is: do shared_buffers cache anything other than tables contents, especially does it caches indices (indexes)?  I experimented while exploring thanks to pg_buffercache and it seems (PG11) that index-only access indeed load shared_buffers, however PG may be loading some/each data (corresponding to a conditon-satisfying index hit)?).  If it doesn't it may be part of the reason why maxing shared_buffers at 40% of the RAM is realistic, as (even if shared_buffer is more efficient than the kernel when it comes to caching DB data) a fair kernel buffercache containing some intensively-used indices (indexes) pages is far better than having no cached index
 		print_report_warn("shared_buffer is too big for the total databases size, uselessly using memory");
 	}
   if ($effective_cache_size < $shared_buffers) {
-		print_report_warn("effective_cache_size is less than shared_buffer.  This is inadequate, as effective_cache_size value must be (shared buffers) + (size in bytes of the kernel's storage buffercache that will be used for PostgreSQL data files)");
+		print_report_warn("effective_cache_size < shared_buffer.  This is inadequate, as effective_cache_size value must be (shared buffers) + (size in bytes of the kernel's storage buffercache that will be used for PostgreSQL data files)");
   }
+  my $buffercache_declared_size = $effective_cache_size - $shared_buffers;
+  if ( $buffercache_declared_size < 4000000000) {
+    print_report_warn("The declared buffercache size ( effective_cache_size - shared_buffers ) is less than 4GB.  effective_cache_size value is probably inadequate.  It must be (shared buffers) + (size in bytes of the kernel's storage buffercache that will be used for PostgreSQL data files)");
+  }
+
 	# ratio of total RAM
 	if (! defined($os->{mem_total})) {
 		print_report_unknown("OS total mem unknown: unable to analyse PostgreSQL memory usage");
@@ -596,9 +602,9 @@ print_header_1("General instance informations");
 		if ($percent_postgresql_max_memory > 100) {
 			print_report_bad("PostgreSQL may try to use more than the amount of RAM.  Add more RAM or reduce PostgreSQL memory requirements");
 		} elsif ($percent_postgresql_max_memory > 80) {
-			print_report_warn("PostgreSQL may try to use more than 90% of the amount of RAM.");
+			print_report_warn("PostgreSQL may try to use more than 90% of the amount of RAM");
 		} elsif ($percent_postgresql_max_memory < 60) {
-			print_report_warn("PostgreSQL will not use more than 60% of the amount of RAM.  On a dedicated host you may increase PostgreSQL shared_buffers, as it may improve performances.");
+			print_report_warn("PostgreSQL will not use more than 60% of the amount of RAM.  On a dedicated host you may increase PostgreSQL shared_buffers, as it may improve performance");
 		} else {
 			print_report_ok("The potential max memory usage for PostgreSQL is adequate if the host is dedicated to it");
 		}
@@ -620,7 +626,7 @@ print_header_1("General instance informations");
 	# Hugepages
 	print_header_2("Huge Pages");
   if (($os->{name} ne 'linux') && ($os->{name} ne 'freebsd')) { # not sure about FreeBSD
-		print_report_unknown("No Huge Pages on this OS.");
+		print_report_unknown("No Huge Pages on this OS");
 	} else {
 		my $nr_hugepages=get_sysctl('vm.nr_hugepages');
 		if (!defined $nr_hugepages || $nr_hugepages == 0) {
@@ -650,7 +656,7 @@ print_header_1("General instance informations");
 		my $suggesthugepages=$peak/$os->{Hugepagesize};
 		print_report_info("Suggested number of Huge Pages: ".int($suggesthugepages + 0.5)." (Consumption peak: ".$peak." / Huge Page size: ".$os->{Hugepagesize}.")");
 		if ($os->{HugePages_Total} < int($suggesthugepages + 0.5)) {
-			add_advice("hugepages","medium","set vm.nr_hugepages=".int($suggesthugepages + 0.5)." in /etc/sysctl.conf and invoke  sysctl -p /etc/sysctl.conf  to reload it.  This will allocate Huge Pages (it may require a system reboot).");
+			add_advice("hugepages","medium","set vm.nr_hugepages=".int($suggesthugepages + 0.5)." in /etc/sysctl.conf and invoke  sysctl -p /etc/sysctl.conf  to reload it.  This will allocate Huge Pages (it may require a system reboot)");
 		}
 
 		if ($os->{Hugepagesize} == 2048) { # TODO: intermediate size?
@@ -692,16 +698,15 @@ print_header_1("General instance informations");
 	}
 }
 
-
 ## Two-phase commit
 {
 	print_header_2("Two-phase commit");
 	if (min_version('9.2')) {
 		my $prepared_xact_count=select_one_value("select count(1) from pg_prepared_xacts");
 		if ($prepared_xact_count == 0) {
-			print_report_ok("Currently no two-phase commit transactions");
+			print_report_ok("Currently there is no two-phase commit transaction");
 		} else {
-			print_report_warn("Currently $prepared_xact_count two-phase commit prepared transactions exist.  If they stay for too long they may lock objects for too long.");
+			print_report_warn("Currently $prepared_xact_count two-phase commit prepared transactions exist.  If they stay for too long they may lock objects for too long");
 			my $prepared_xact_lock_count=select_one_value("select count(1) from pg_locks where transactionid in (select transaction from pg_prepared_xacts)");
 			if ($prepared_xact_lock_count > 0) {
 				print_report_bad("Two-phase commit transactions have $prepared_xact_lock_count locks!");
@@ -718,27 +723,28 @@ print_header_1("General instance informations");
 {
 	print_header_2("Autovacuum");
 	if (get_nonvolatile_setting('autovacuum') eq 'on') {
-		print_report_ok('autovacuum is activated.');
+		print_report_ok('autovacuum is activated');
 		my $autovacuum_max_workers=get_nonvolatile_setting('autovacuum_max_workers');
 		print_report_info("autovacuum_max_workers: $autovacuum_max_workers");
 	} else {
-		print_report_bad('autovacuum is not activated.  This is bad except if you known what you do.');
+		print_report_bad('autovacuum is not activated.  This is bad except if you known what you do');
 	}
 }
 
 ## Checkpoint
 {
 	print_header_2("Checkpoint");
-	my $checkpoint_completion_target=get_nonvolatile_setting('checkpoint_completion_target');
-  my $checkpoint_warning=get_nonvolatile_setting('checkpoint_warning');
+	my $checkpoint_completion_target=get_nonvolatile_setting('checkpoint_completion_target'); # no dimension
+  my $checkpoint_warning=get_nonvolatile_setting('checkpoint_warning'); # unit: s
   $checkpoint_warning=~s/s$//;
-  my $checkpoint_timeout=get_nonvolatile_setting('checkpoint_timeout');
+  my $checkpoint_timeout=get_nonvolatile_setting('checkpoint_timeout'); # unit: s
+  $checkpoint_timeout=~s/s$//;
   print_report_warn("checkpoint_warning value is 0.  This is rarely adequate") if ($checkpoint_warning == 0);
   if ($checkpoint_completion_target == 0) {
-    print_report_bad("checkpoint_completion_target value is 0, this is absurd");
+    print_report_bad("checkpoint_completion_target value is 0.  This is absurd");
   }
   else {
-    my $msg_CCT="checkpoint_completion_target is too low.  Some checkpoints may abruptly overload the storage with write commands for a long time, slowing running queries down.  To avoid such temporary overload you may balance checkpoint writes using a value higher than 0.8.";
+    my $msg_CCT="checkpoint_completion_target is too low.  Some checkpoints may abruptly overload the storage with write commands for a long time, slowing running queries down.  To avoid such temporary overload you may balance checkpoint writes using a value higher than 0.8";
     if ($checkpoint_completion_target < 0.5) {
       print_report_warn("Checkpoint_completion_target($checkpoint_completion_target) is lower than its default value (0.5)");
       add_advice("checkpoint","high", $msg_CCT);
@@ -755,11 +761,12 @@ print_header_1("General instance informations");
     }
     my $checkpoint_dirty_writing_time_window=$checkpoint_timeout / $checkpoint_completion_target;
     if ($checkpoint_dirty_writing_time_window < 10) {
-      print_report_warn("checkpoint_timeout / checkpoint_completion_target is probably too low.");
+      print_report_warn("checkpoint_timeout / checkpoint_completion_target is probably too low");
     }
     if (min_version('9.5')) {
       my $max_wal_size=get_nonvolatile_setting('max_wal_size');
-      # todo: much work to do with all those parameters and PG versions
+      # todo: much work to do with all those parameters and PG versions, see https://www.postgresql.org/docs/12/wal-configuration.html
+      # for now let's neglect PG versions < 11 ?
     }
   }
 }
@@ -778,7 +785,7 @@ print_header_1("General instance informations");
 	if ($os->{name} eq 'darwin') {
 		if ($wal_sync_method ne 'fsync_writethrough') {
 			print_report_bad("wal_sync_method is $wal_sync_method.  Settings other than fsync_writethrough may lead to loss of data after a crash, DANGER!");
-			add_advice("storage access","high","set wal_sync_method to fsync_writethrough to on.  Otherwise, the write-back cache may prevent recovery after a crash.");
+			add_advice("storage access","high","set wal_sync_method to fsync_writethrough to on.  Otherwise, the write-back cache may prevent recovery after a crash");
 		} else {
 			print_report_ok("wal_sync_method is $wal_sync_method");
 		}
@@ -797,11 +804,11 @@ print_header_1("General instance informations");
 	if (min_version('9.0')) {
 		my $wal_level=get_nonvolatile_setting('wal_level');
 		if ($wal_level eq 'minimal') {
-			print_report_bad("The wal_level minimal does not allow PITR backup and recovery");
-			add_advice("backup","high","Configure your wal_level to a level which allow PITR backup and recovery");
+			print_report_bad("The \'minimal\' wal_level does not allow PITR backup and recovery");
+			add_advice("backup","high","Configure your wal_level to a level which allows PITR backup and recovery");
 		}
 	} else {
-		print_report_warn("wal_level not supported, please upgrade PostgreSQL.");
+		print_report_warn("wal_level not supported, please upgrade PostgreSQL");
 	}
 }
 
@@ -811,7 +818,7 @@ print_header_1("General instance informations");
 	# Modified cost settings
 	my @ModifiedCosts=select_one_column("select name from pg_settings where name like '%cost%' and setting<>boot_val;");
 	if (@ModifiedCosts > 0) {
-		print_report_warn("Some I/O cost settings are not set to their default value: ".join(',',@ModifiedCosts).".  This may lead the planner to create suboptimal plans.");
+		print_report_warn("Some I/O cost settings are not set to their default value: ".join(',',@ModifiedCosts).".  This may lead the planner to create suboptimal plans");
 	} else {
 		print_report_ok("I/O cost settings are set at their default values");
 	}
@@ -869,7 +876,7 @@ print_header_1("Database information for database $database");
 			print_report_ok("No tablespace in PGDATA");
 		} else {
 			print_report_bad("Some tablespaces defined in PGDATA: ".join(' ',keys(%{$tablespaces_in_pgdata})));
-			add_advice('tablespaces','high','Some tablespaces are in PGDATA.  Move them outside of this folder.');
+			add_advice('tablespaces','high','Some tablespaces are in PGDATA.  Move them outside of this folder');
 		}
 	} else {
 		print_report_unknown("This check is only possible with PostgreSQL version 9.2 and above");

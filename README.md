@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.org/jfcoz/postgresqltuner.svg?branch=master)](https://travis-ci.org/jfcoz/postgresqltuner)
 [![Donate](https://liberapay.com/assets/widgets/donate.svg)](https://liberapay.com/CoCoZ/donate)
 
-`postgresqltuner.pl` is a simple script to analyse your PostgreSQL database. It is inspired by [mysqltuner.pl](https://github.com/major/MySQLTuner-perl)
+`postgresqltuner.pl` analyses your PostgreSQL instance and produces a report, giving hints.  It is inspired by [mysqltuner.pl](https://github.com/major/MySQLTuner-perl)
 
 ## Demo
 
