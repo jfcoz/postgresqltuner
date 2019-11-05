@@ -52,8 +52,7 @@ $nmmc+=try_load("Term::ANSIColor",
 		'/etc/redhat-release'=>'yum install -y perl-Term-ANSIColor'
 	});
 if ($nmmc > 0) {
-	print STDERR "# Please install theses Perl modules\n";
-	exit 1;
+	die "# Please install any missing Perl module";
 }
 
 my $script_version="1.0.1";
@@ -62,7 +61,7 @@ my $min_s=60;
 my $hour_s=60*$min_s;
 my $day_s=24*$hour_s;
 
-my $host=undef; # this sort of undef seems useless to me (perl -e 'my $host; print "OK\n" if (! defined $host);' ) , is it necessary on a given environment?
+my $host=undef; # at declaration time assigning to undef seems useless to me (perl -e 'my $host; print "OK\n" if (! defined $host);' ) , is it necessary on a given environment?
 my $username=undef;
 my $password=undef;
 my $database=undef;
@@ -148,7 +147,8 @@ if (!defined($password)) {
 		}
 	}
 
-	if (open(PGPASS,'<',$pgpassfile)) {
+	if (open(PGPASS,'<',$pgpassfile))
+    {
 		while (my $line=<PGPASS>) {
 			chomp($line);
 			next if $line =~ /^\s*#/;
@@ -202,7 +202,7 @@ sub usage {
 	print STDERR "\thost:port:database:username:password\n";
 	print STDERR "  --wmp: average number of work_mem buffers per connection in percent (default 150)\n";
 	print STDERR "  --sshopt: pass options to ssh (example --sshopt=Port=2200)\n";
-	print STDERR "  --ssd: declare all storage units (used by PostgreSQL) as non rotational\n";
+	print STDERR "  --ssd: declare all physical storage units (used by PostgreSQL) as non rotational\n";
 	print STDERR "  --nocolor: do not colorize the report\n";
 	exit $return;
 }
@@ -227,23 +227,29 @@ if (defined(os_cmd("true"))) {
   print_report_ok("I can run OS commands");
 } else {
         print_report_bad("Unable to run OS command, the report will be incomplete");
-	add_advice("report","urgent","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication.  This will allow it to collect more system informations");
+	add_advice("reporting","high","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication.  This will allow it to collect more system informations");
 }
 
 # Database connection
 print "Connecting to $host:$port database $database with user $username...\n";
 my $dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host;port=$port;",$username,$password,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
 
-# Collect datas
+system("/usr/bin/env perl -e 'use Memoize' 1>/dev/null 2>/dev/null"); # is the Perl module 'Memoize' installed?
+if ( ($? >> 8) == 0) {
+  use Memoize;
+	memoize('get_nonvolatile_setting');
+}
+
+# Collect data
 my $users=select_all_hashref("select * from pg_user","usename");
 my $i_am_super=$users->{$username}->{usesuper};
 my $settings=select_all_hashref("select * from pg_settings","name");
-my $rotational_disks=undef;
+my $rotational_storage=undef;
 my @Extensions;
 if (min_version('9.1')) {
 	@Extensions=select_one_column("select extname from pg_extension");
 } else {
-	print_report_warn("pg_extension does not exist in ".get_setting('server_version'));
+	print_report_warn("pg_extension does not exist in PostgreSQL version ".get_nonvolatile_setting('server_version'));
 }
 my %advices;
 
@@ -251,7 +257,7 @@ if ($i_am_super) {
 	print_report_ok("The user acount used for reporting has superuser rights on this PostgreSQL instance");
 } else {
 	print_report_bad("The user account used for reporting does not have Postgres superuser rights.  The report will be incomplete");
-	add_advice("report","urgent","Use an account with Postgres superuser privileges to get a more complete report");
+	add_advice("reporting","high","Use an account with Postgres superuser privileges to get a more complete report");
 }
 
 # Report
@@ -294,7 +300,7 @@ print_header_1("OS information");
 			my $overcommit_memory=get_sysctl('vm.overcommit_memory');
 			if ($overcommit_memory != 2) {
 				print_report_bad("Memory overcommitment is allowed on the system.  This may lead the OOM Killer to kill at least one PostgreSQL process, DANGER!");
-				add_advice('sysctl','urgent','set vm.overcommit_memory=2 in /etc/sysctl.conf and invoke  sysctl -p /etc/sysctl.conf  to enforce it.  This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
+				add_advice('system','high','set vm.overcommit_memory=2 in /etc/sysctl.conf and invoke  sysctl -p /etc/sysctl.conf  to enforce it.  This will disable memory overcommitment and avoid postgresql killed by OOM killer.');
 				my $overcommit_ratio=get_sysctl('vm.overcommit_ratio');
 				print_report_info("sysctl vm.overcommit_ratio=$overcommit_ratio");
 				if ($overcommit_ratio <= 50) {
@@ -350,22 +356,22 @@ print_header_1("OS information");
 		if ($os->{name} eq 'darwin') {
 			print_report_unknown("No I/O scheduler information on MacOS");
 		} else {
-			my $disks_list=os_cmd("ls /sys/block/");
-			if (!defined $disks_list) {
+			my $storage_units_list=os_cmd("ls /sys/block/");
+			if (!defined $storage_units_list) {
 				print_report_unknown("Unable to explore storage unit(s) system attributes");
 			} else {
-				foreach my $disk (split(/\n/,$disks_list)) {
-					next if ($disk eq '.' or $disk eq '..');
-					next if ($disk =~ /^sr/); # exclude cdrom
+				foreach my $unit (split(/\n/,$storage_units_list)) {
+					next if ($unit eq '.' or $unit eq '..');
+					next if ($unit =~ /^sr/); # exclude cdrom
 
 					# Scheduler
-					my $disk_schedulers=os_cmd("cat /sys/block/$disk/queue/scheduler");
-					if (! defined($disk_schedulers)) {
-						print_report_unknown("Unable to identify the scheduler used for the storage unit $disk");
+					my $unit_schedulers=os_cmd("cat /sys/block/$unit/queue/scheduler");
+					if (! defined($unit_schedulers)) {
+						print_report_unknown("Unable to identify the scheduler used for the storage unit $unit");
 					} else {
-						chomp($disk_schedulers);
-						next if ($disk_schedulers eq 'none');
-						foreach my $scheduler (split(/ /,$disk_schedulers)) {
+						chomp($unit_schedulers);
+						next if ($unit_schedulers eq 'none');
+						foreach my $scheduler (split(/ /,$unit_schedulers)) {
 							if ($scheduler =~ /^\[([a-z-]+)\]$/) {
 								$active_schedulers{$1}++;
 							}
@@ -373,58 +379,62 @@ print_header_1("OS information");
 					}
 
 					# Detect SSD or rotational disks
-					my $disk_is_rotational=1; # Default
+					my $unit_is_rotational=1; # Default
 					if ($ssd) {
-						$disk_is_rotational=0;
+						$unit_is_rotational=0;
 					} else {
-						my $disk_is_rotational=os_cmd("cat /sys/block/$disk/queue/rotational");
-						if (!defined($disk_is_rotational)) {
-							print_report_unknown("Unable to identify if the storage unit $disk is rotational");
+						my $unit_is_rotational=os_cmd("cat /sys/block/$unit/queue/rotational");
+						if (!defined($unit_is_rotational)) {
+							print_report_unknown("Unable to identify if the storage unit $unit is rotational");
 						} else {
-							chomp($disk_is_rotational);
+							chomp($unit_is_rotational);
 						}
 					}
-					$rotational_disks+=$disk_is_rotational;
+					$rotational_storage+=$unit_is_rotational;
 				}
 			}
 			print_report_info("Currently used I/O scheduler(s): ".join(',',keys(%active_schedulers)));
 		}
-		if (defined($hypervisor) && defined($rotational_disks) && $rotational_disks>0) {
-			print_report_warn("On a virtual machine, /sys/block/DISK/queue/rotational is not accurate. Use the --ssd arg if the VM in running on a SSD storage");
-			add_advice("report","urgent","Use the --ssd arg if the VM in running on a SSD storage");
+		if (defined($hypervisor) && defined($rotational_storage) && $rotational_storage>0) {
+			print_report_warn("If PostgreSQL runs in a virtual machine, I cannot know the underlying physical storage type. Use the --ssd arg if the VM only uses SSD storage");
+			add_advice("storage","high","Use the --ssd arg if PostgreSQL only uses a SSD storage");
 		}
 		if (defined($hypervisor) && $active_schedulers{'cfq'}) {
 			print_report_bad("The CFQ scheduler is inadequate on a virtual machine (because the hypervisor and/or underlying kernel is already in charge of the I/O scheduling)");
-			add_advice("system","urgent","Configure your virtual machine system to use the noop or deadline io scheduler:\necho deadline > /sys/block/sdX/queue/scheduler\nupdate your kernel parameters line with elevator=deadline to restore this parameter after each reboot");
+			add_advice("system","high","Configure your virtual machine system to use the noop or deadline io scheduler:\necho deadline > /sys/block/sdX/queue/scheduler\nupdate your kernel parameters line with elevator=deadline to restore this parameter after each reboot");
 		}
 	}
 }
 
 print_header_1("General instance informations");
 
-## Version
+## PostgreSQL version
 {
-	print_header_2("Version");
-	my $version=get_setting('server_version');
-	if ($version=~/(devel|rc)/) {
-		print_report_bad("You are using a PostreSQL version $version which is a Development Snapshot or Release Candidate: do not use in production");
-		add_advice("version","urgent","Use a stable version (not a Development Snapshot or Release Candidate)");
-	}
-	if (min_version('11')) {
-		print_report_ok("You are using the latest major version ($version) of PostreSQL");
-	} elsif (min_version('10')) {
-		print_report_warn("You are using version $version which is not the latest major version of PostreSQL");
-		add_advice("version","low","Upgrade to the latest stable version");
-	} elsif (min_version('9.0')) {
-		print_report_warn("You are using version $version which is not the latest major version of PostreSQL");
-		add_advice("version","low","Upgrade to the latest stable version");
-	} elsif (min_version('8.0')) {
-		print_report_bad("You are using version $version  of PostreSQL, which is very old");
-		add_advice("version","medium","Upgrade to the latest stable version");
-	} else {
-		print_report_bad("You are using version $version of PostreSQL, which is very old and not supported by this script");
-		add_advice("version","high","Upgrade to the latest stable version");
-	}
+  print_header_2("PostgreSQL version");
+  my $version=get_nonvolatile_setting('server_version');
+  if ($version=~/(devel|rc)/) {
+    print_report_bad("You are using PostreSQL version $version which is a Development Snapshot or Release Candidate");
+    add_advice("version","high","If this instance is a production server, then only use stable versions");
+  }
+  my $pg_upgrade="Upgrade to the latest stable PostgreSQL version";
+  if (min_version('12')) {
+    print_report_ok("You are using the latest PostreSQL major version ($version)");
+  } elsif (min_version('11')) {
+    print_report_warn($pg_upgrade);
+    add_advice("version","low",$pg_upgrade);
+  } elsif (min_version('10')) {
+    print_report_warn($pg_upgrade);
+    add_advice("version","low",$pg_upgrade);
+  } elsif (min_version('9')) {
+    print_report_warn($pg_upgrade);
+    add_advice("version","medium",$pg_upgrade);
+  } elsif (min_version('8.1')) {
+    print_report_bad("You are using PostreSQL version $version, which is very old");
+    add_advice("version","high",$pg_upgrade);
+  } else {
+    print_report_bad("You are using PostreSQL version $version, which is very old and not supported by this script");
+    add_advice("version","high",$pg_upgrade);
+  }
 }
 
 ## Uptime
@@ -477,7 +487,7 @@ print_header_1("General instance informations");
 	} else {
 		print_report_warn("Unable to check users passwords, please use a super user instead");
 	}
-	my $password_encryption=get_setting('password_encryption');
+	my $password_encryption=get_nonvolatile_setting('password_encryption');
 	if ($password_encryption eq 'off') {
 		print_report_bad("Password encryption is disabled by default.  Passwords will not be encrypted until explicitely asked");
 	} else {
@@ -489,7 +499,7 @@ print_header_1("General instance informations");
 {
 	print_header_2("Connection information");
 	# max_connections
-	my $max_connections=get_setting('max_connections');
+	my $max_connections=get_nonvolatile_setting('max_connections');
 	print_report_info("max_connections: $max_connections");
 
 	# current connections + ratio
@@ -502,7 +512,7 @@ print_header_1("General instance informations");
 		print_report_bad("You are using more than 90% of connection slots.  Increase max_connections to avoid saturation of connection slots");
 	}
 	# superuser_reserved_connections
-	my $superuser_reserved_connections=get_setting("superuser_reserved_connections");
+	my $superuser_reserved_connections=get_nonvolatile_setting("superuser_reserved_connections");
 	my $superuser_reserved_connections_ratio=$superuser_reserved_connections*100/$max_connections;
 	if ($superuser_reserved_connections == 0) {
 		print_report_bad("No connection slot is reserved for the superuser.  In case of connection saturation you will not be able to connect to investigate or kill connections");
@@ -521,13 +531,13 @@ print_header_1("General instance informations");
 		print_report_warn("The average connection age is less than 10 minutes.  Use a connection pooler to limit new connections/seconds");
 	}
 	# pre_auth_delay
-	my $pre_auth_delay=get_setting('pre_auth_delay');
+	my $pre_auth_delay=get_nonvolatile_setting('pre_auth_delay');
 	$pre_auth_delay=~s/s//;
 	if ($pre_auth_delay > 0) {
 		print_report_bad("pre_auth_delay=$pre_auth_delay: this is a developer feature for debugging and decrease connection delay of $pre_auth_delay seconds");
 	}
 	# post_auth_delay
-	my $post_auth_delay=get_setting('post_auth_delay');
+	my $post_auth_delay=get_nonvolatile_setting('post_auth_delay');
 	$post_auth_delay=~s/s//;
 	if ($post_auth_delay > 0) {
 		print_report_bad("post_auth_delay=$post_auth_delay: this is a developer feature for debugging and decrease connection delay of $post_auth_delay seconds");
@@ -535,24 +545,24 @@ print_header_1("General instance informations");
 
 	print_header_2("Memory usage");
 	# work_mem
-	my $work_mem=get_setting('work_mem');
+	my $work_mem=get_nonvolatile_setting('work_mem');
 	my $work_mem_total=$work_mem*$work_mem_per_connection_percent/100*$max_connections;
 	print_report_info("Configured work_mem: ".format_size($work_mem));
 	print_report_info("Using an average ratio of work_mem buffers by connection of $work_mem_per_connection_percent% (use --wmp to change it)");
 	print_report_info("Total work_mem (per connection): ".format_size($work_mem*$work_mem_per_connection_percent/100));
-	my $shared_buffers=get_setting('shared_buffers');
+	my $shared_buffers=get_nonvolatile_setting('shared_buffers');
 	# shared_buffers
 	print_report_info("shared_buffers: ".format_size($shared_buffers));
 	# track activity
-	my $max_processes=get_setting('max_connections')+get_setting('autovacuum_max_workers');
+	my $max_processes=get_nonvolatile_setting('max_connections')+get_nonvolatile_setting('autovacuum_max_workers');
 	if (min_version('9.4')) {
-		$max_processes+=get_setting('max_worker_processes');
+		$max_processes+=get_nonvolatile_setting('max_worker_processes');
 	}
-	my $track_activity_size=get_setting('track_activity_query_size')*$max_processes;
+	my $track_activity_size=get_nonvolatile_setting('track_activity_query_size')*$max_processes;
 	print_report_info("Track activity reserved size: ".format_size($track_activity_size));
 	# maintenance_work_mem
-	my $maintenance_work_mem=get_setting('maintenance_work_mem');
-	my $autovacuum_max_workers=get_setting('autovacuum_max_workers');
+	my $maintenance_work_mem=get_nonvolatile_setting('maintenance_work_mem');
+	my $autovacuum_max_workers=get_nonvolatile_setting('autovacuum_max_workers');
 	my $maintenance_work_mem_total=$maintenance_work_mem*$autovacuum_max_workers;
 	if ($maintenance_work_mem<=64*1024*1024) {
 		print_report_warn("maintenance_work_mem is less or equal to its default value.  Increase it to reduce maintenance tasks duration");
@@ -564,7 +574,7 @@ print_header_1("General instance informations");
 
 	print_report_info("Max memory usage:\n\t\t  shared_buffers (".format_size($shared_buffers).")\n\t\t+ max_connections * work_mem * average_work_mem_buffers_per_connection ($max_connections * ".format_size($work_mem)." * $work_mem_per_connection_percent / 100 = ".format_size($max_connections*$work_mem*$work_mem_per_connection_percent/100).")\n\t\t+ autovacuum_max_workers * maintenance_work_mem ($autovacuum_max_workers * ".format_size($maintenance_work_mem)." = ".format_size($autovacuum_max_workers*$maintenance_work_mem).")\n\t\t+ track activity size (".format_size($track_activity_size).")\n\t\t= ".format_size($max_memory));
 	# effective_cache_size
-	my $effective_cache_size=get_setting('effective_cache_size');
+	my $effective_cache_size=get_nonvolatile_setting('effective_cache_size');
 	print_report_info("effective_cache_size: ".format_size($effective_cache_size));
 	# total database size
 	my $all_databases_size=select_one_value("select sum(pg_database_size(datname)) from pg_database");
@@ -574,6 +584,9 @@ print_header_1("General instance informations");
 	if ($shared_buffers_usage < 0.7) { # todo: AFAIK shared_buffers may also contain various non-data, for example indexes, therefore the total (cumulated) database size is only one parameter
 		print_report_warn("shared_buffer is too big for the total databases size, uselessly using memory");
 	}
+  if ($effective_cache_size < $shared_buffers) {
+		print_report_warn("effective_cache_size is less than shared_buffer.  This is inadequate, as effective_cache_size value must be (shared buffers) + (size in bytes of the kernel's storage buffercache that will be used for PostgreSQL data files)");
+  }
 	# ratio of total RAM
 	if (! defined($os->{mem_total})) {
 		print_report_unknown("OS total mem unknown: unable to analyse PostgreSQL memory usage");
@@ -597,7 +610,7 @@ print_header_1("General instance informations");
 		}
 		# total ram usage with effective_cache_size
 		my $percent_mem_usage=($max_memory+$effective_cache_size-$shared_buffers)*100/$os->{mem_total};
-		print_report_info("max memory + effective_cache_size - shared_buffers is ".format_percent($percent_mem_usage)." of the amount of RAM");
+		print_report_info("max memory usage + effective_cache_size - shared_buffers is ".format_percent($percent_mem_usage)." of the amount of RAM");
 		if ($percent_mem_usage < 60 and $shared_buffers_usage > 1) {
 			print_report_warn("Increase shared_buffers to let PostgreSQL directly use more memory, especially if the machine is dedicated to PostgreSQL");
 		} elsif ($percent_mem_usage > 90) {
@@ -611,14 +624,14 @@ print_header_1("General instance informations");
 	} else {
 		my $nr_hugepages=get_sysctl('vm.nr_hugepages');
 		if (!defined $nr_hugepages || $nr_hugepages == 0) {
-			print_report_bad("No Huge Pages available on the system");
+			print_report_warn("No Huge Pages available on the system");
 			last;
 		}
-		if (get_setting('huge_pages') eq 'on') {
-			print_report_ok("huge_pages=on, therefore PostgreSQL needs Huge Pages");
+		if (get_nonvolatile_setting('huge_pages') eq 'on') {
+			print_report_warn("huge_pages=on, therefore PostgreSQL needs Huge Pages and will not start if the kernel doesn't provide them");
 		}
-    elsif	(get_setting('huge_pages') eq 'try') {
-			print_report_bad("huge_pages=on, therefore PostgreSQL will try to use Huge Pages, if they are enabled");
+    elsif	(get_nonvolatile_setting('huge_pages') eq 'try') {
+			print_report_info("huge_pages=on, therefore PostgreSQL will try to use Huge Pages, if they are enabled");
 		}
     else {
       add_advice("hugepages","medium","Enable huge_pages to enhance memory allocation performance, and if necessary also enable them at OS level");
@@ -650,7 +663,7 @@ print_header_1("General instance informations");
 {
 	print_header_2("Logs");
 	# log hostname
-	my $log_hostname=get_setting('log_hostname');
+	my $log_hostname=get_nonvolatile_setting('log_hostname');
 	if ($log_hostname eq 'on') {
 		print_report_bad("log_hostname is on: this will decrease connection performance (because PostgreSQL has to do DNS lookups)");
 	} else {
@@ -658,7 +671,7 @@ print_header_1("General instance informations");
 	}
 
 	# log_min_duration_statement
-	my $log_min_duration_statement=get_setting('log_min_duration_statement');
+	my $log_min_duration_statement=get_nonvolatile_setting('log_min_duration_statement');
 	$log_min_duration_statement=~s/ms//;
 	if ($log_min_duration_statement == -1 ) {
 		print_report_warn("Log of long queries deactivated.  It will be more difficult to optimize query performance");
@@ -669,7 +682,7 @@ print_header_1("General instance informations");
 	}
 
 	# log_statement
-	my $log_statement=get_setting('log_statement');
+	my $log_statement=get_nonvolatile_setting('log_statement');
 	if ($log_statement eq 'all') {
 		print_report_bad("log_statement=all is very storage-intensive and only usefull for debuging");
 	} elsif ($log_statement eq 'mod') {
@@ -704,9 +717,9 @@ print_header_1("General instance informations");
 ## Autovacuum
 {
 	print_header_2("Autovacuum");
-	if (get_setting('autovacuum') eq 'on') {
+	if (get_nonvolatile_setting('autovacuum') eq 'on') {
 		print_report_ok('autovacuum is activated.');
-		my $autovacuum_max_workers=get_setting('autovacuum_max_workers');
+		my $autovacuum_max_workers=get_nonvolatile_setting('autovacuum_max_workers');
 		print_report_info("autovacuum_max_workers: $autovacuum_max_workers");
 	} else {
 		print_report_bad('autovacuum is not activated.  This is bad except if you known what you do.');
@@ -716,43 +729,61 @@ print_header_1("General instance informations");
 ## Checkpoint
 {
 	print_header_2("Checkpoint");
-	my $checkpoint_completion_target=get_setting('checkpoint_completion_target');
-	if ($checkpoint_completion_target < 0.5) {
-		print_report_bad("Checkpoint_completion_target($checkpoint_completion_target) is lower than default (0.5)");
-		add_advice("checkpoint","urgent","Your checkpoint completion target is too low.  Some checkpoints may overload the storage with write commands for a long time, slowing running queries down.  To avoid such temporary overload yu may put something nearest from 0.8/0.9 to better balance checkpoint writes.");
-	} elsif ($checkpoint_completion_target >= 0.5 and $checkpoint_completion_target <= 0.7) {
-		print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is low");
-		add_advice("checkpoint","medium","Your checkpoint completion target is too low.  Some checkpoints may overload the storage with write commands for a long time, slowing running queries down.  To avoid such temporary overload yu may put something nearest from 0.8/0.9 to better balance checkpoint writes.");
-	} elsif ($checkpoint_completion_target >= 0.7 and $checkpoint_completion_target <= 0.9) {
-		print_report_ok("checkpoint_completion_target($checkpoint_completion_target) OK");
-	} elsif ($checkpoint_completion_target > 0.9 and $checkpoint_completion_target < 1) {
-		print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is too near to 1");
-		add_advice("checkpoint","medium","Your checkpoint completion target is too high.  Put something between 0.8 and 0.9 to better balance checkpoint writes");
-	} else {
-		print_report_bad("checkpoint_completion_target too high ($checkpoint_completion_target)");
-	}
+	my $checkpoint_completion_target=get_nonvolatile_setting('checkpoint_completion_target');
+  my $checkpoint_warning=get_nonvolatile_setting('checkpoint_warning');
+  $checkpoint_warning=~s/s$//;
+  my $checkpoint_timeout=get_nonvolatile_setting('checkpoint_timeout');
+  print_report_warn("checkpoint_warning value is 0.  This is rarely adequate") if ($checkpoint_warning == 0);
+  if ($checkpoint_completion_target == 0) {
+    print_report_bad("checkpoint_completion_target value is 0, this is absurd");
+  }
+  else {
+    my $msg_CCT="checkpoint_completion_target is too low.  Some checkpoints may abruptly overload the storage with write commands for a long time, slowing running queries down.  To avoid such temporary overload you may balance checkpoint writes using a value higher than 0.8.";
+    if ($checkpoint_completion_target < 0.5) {
+      print_report_warn("Checkpoint_completion_target($checkpoint_completion_target) is lower than its default value (0.5)");
+      add_advice("checkpoint","high", $msg_CCT);
+    } elsif ($checkpoint_completion_target >= 0.5 and $checkpoint_completion_target <= 0.7) {
+      print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is low");
+      add_advice("checkpoint","medium", $msg_CCT);
+    } elsif ($checkpoint_completion_target >= 0.7 and $checkpoint_completion_target <= 0.9) {
+      print_report_ok("checkpoint_completion_target($checkpoint_completion_target) OK");
+    } elsif ($checkpoint_completion_target > 0.9 and $checkpoint_completion_target < 1) {
+      print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is too near to 1");
+      add_advice("checkpoint","medium", $msg_CCT);
+    } else {
+      print_report_bad("checkpoint_completion_target too high ($checkpoint_completion_target)");
+    }
+    my $checkpoint_dirty_writing_time_window=$checkpoint_timeout / $checkpoint_completion_target;
+    if ($checkpoint_dirty_writing_time_window < 10) {
+      print_report_warn("checkpoint_timeout / checkpoint_completion_target is probably too low.");
+    }
+    if (min_version('9.5')) {
+      my $max_wal_size=get_nonvolatile_setting('max_wal_size');
+      # todo: much work to do with all those parameters and PG versions
+    }
+  }
 }
 
 ## Disk access
 {
 	print_header_2("Disk access");
-	my $fsync=get_setting('fsync');
-	my $wal_sync_method=get_setting('wal_sync_method');
+	my $fsync=get_nonvolatile_setting('fsync');
+	my $wal_sync_method=get_nonvolatile_setting('wal_sync_method');
 	if ($fsync eq 'on') {
 		print_report_ok("fsync is on");
-	} else {    
+	} else {
 		print_report_bad("fsync is off.  You may lose data after a crash, DANGER!");
-		add_advice("checkpoint","urgent","set fsync to on!");
+		add_advice("checkpoint","high","set fsync to on!");
 	}
 	if ($os->{name} eq 'darwin') {
 		if ($wal_sync_method ne 'fsync_writethrough') {
 			print_report_bad("wal_sync_method is $wal_sync_method.  Settings other than fsync_writethrough may lead to loss of data after a crash, DANGER!");
-			add_advice("disk access","urgent","set wal_sync_method to fsync_writethrough to on.  Otherwise, the disk write-back cache may prevent recovery after a crash.");
+			add_advice("storage access","high","set wal_sync_method to fsync_writethrough to on.  Otherwise, the write-back cache may prevent recovery after a crash.");
 		} else {
 			print_report_ok("wal_sync_method is $wal_sync_method");
 		}
 	}
-	if (get_setting('synchronize_seqscans') eq 'on') {
+	if (get_nonvolatile_setting('synchronize_seqscans') eq 'on') {
 		print_report_ok("synchronize_seqscans is on");
 	} else {
 		print_report_warn("synchronize_seqscans is off");
@@ -764,10 +795,10 @@ print_header_1("General instance informations");
 {
 	print_header_2("WAL");
 	if (min_version('9.0')) {
-		my $wal_level=get_setting('wal_level');
+		my $wal_level=get_nonvolatile_setting('wal_level');
 		if ($wal_level eq 'minimal') {
 			print_report_bad("The wal_level minimal does not allow PITR backup and recovery");
-			add_advice("backup","urgent","Configure your wal_level to a level which allow PITR backup and recovery");
+			add_advice("backup","high","Configure your wal_level to a level which allow PITR backup and recovery");
 		}
 	} else {
 		print_report_warn("wal_level not supported, please upgrade PostgreSQL.");
@@ -786,15 +817,15 @@ print_header_1("General instance informations");
 	}
 
 	# random vs seq page cost on SSD
-	if (!defined($rotational_disks)) {
+	if (!defined($rotational_storage)) {
 		print_report_unknown("I have no information about the rotational/SSD storage: I'm unable to check random_page_cost and seq_page_cost parameters");
 	} else {
-		if ($rotational_disks == 0 and get_setting('random_page_cost')>get_setting('seq_page_cost')) {
+		if ($rotational_storage == 0 and get_nonvolatile_setting('random_page_cost')>get_nonvolatile_setting('seq_page_cost')) {
 			print_report_warn("With SSD storage, set random_page_cost=seq_page_cost to help the planner prefer index scans");
 			add_advice("planner","medium","Set random_page_cost=seq_page_cost on SSD storage");
-		} elsif ($rotational_disks > 0 and get_setting('random_page_cost')<=get_setting('seq_page_cost')) {
+		} elsif ($rotational_storage > 0 and get_nonvolatile_setting('random_page_cost')<=get_nonvolatile_setting('seq_page_cost')) {
 			print_report_bad("Without SSD storage, the random_page_cost value must be superior than the seq_page_cost value");
-			add_advice("planner","urgent","If you don't use SSD storage then set random_page_cost to 2-4 times more than seq_page_cost/  Reduce the factor if you use multiple rotating disks");
+			add_advice("planner","high","If you don't use SSD storage then set random_page_cost to 2-4 times more than seq_page_cost/  Reduce the factor if you use multiple rotating disks");
 		}
 	}
 
@@ -838,7 +869,7 @@ print_header_1("Database information for database $database");
 			print_report_ok("No tablespace in PGDATA");
 		} else {
 			print_report_bad("Some tablespaces defined in PGDATA: ".join(' ',keys(%{$tablespaces_in_pgdata})));
-			add_advice('tablespaces','urgent','Some tablespaces are in PGDATA.  Move them outside of this folder.');
+			add_advice('tablespaces','high','Some tablespaces are in PGDATA.  Move them outside of this folder.');
 		}
 	} else {
 		print_report_unknown("This check is only possible with PostgreSQL version 9.2 and above");
@@ -887,7 +918,7 @@ print_header_1("Database information for database $database");
 		my @Invalid_indexes=select_one_column("select relname from pg_index join pg_class on indexrelid=oid where indisvalid=false");
 		if (@Invalid_indexes > 0) {
 			print_report_bad("List of invalid index in the database: ". join(',', @Invalid_indexes));
-			add_advice("index","urgent","Please check/reindex any invalid index");
+			add_advice("index","high","Please check/reindex any invalid index");
 		} else {
 			print_report_ok("No invalid index");
 		}
@@ -935,7 +966,7 @@ exit(0);
 
 sub min_version {
 	my $min_version=shift;
-	my $cur_version=get_setting('server_version');
+	my $cur_version=get_nonvolatile_setting('server_version');
 	$cur_version=~s/(devel|rc).*//; # clean devel or RC
 	my ($min_major,$min_minor)=split(/\./,$min_version);
 	my ($cur_major,$cur_minor)=split(/\./,$cur_version);
@@ -1058,6 +1089,11 @@ sub get_setting {
     return standard_units($settings->{$name}->{setting}, $settings->{$name}->{unit});
   }
 }
+
+sub get_nonvolatile_setting {
+  return get_setting(shift);
+}
+
 sub standard_units {
   my $value=shift;
   my $unit=shift;
@@ -1151,7 +1187,9 @@ sub get_sysctl {
 
 sub add_advice {
 	my ($category,$priority,$advice)=@_;
-	die("unknown priority $priority") if ($priority !~ /(urgent|medium|low)/);
+  $priority='high' if ($priority eq 'urgent');
+	die("This script has a bug.  Unknown priority '$priority', line ". [caller(0)]->[2]) if ($priority !~ /(high|medium|low)/);
+	die("This script has a bug.  No advice text, line ". [caller(0)]->[2]) if (! defined $advice);
 	push(@{$advices{$category}{$priority}},$advice);
 }
 
@@ -1162,9 +1200,13 @@ sub print_advices {
 	foreach my $category (sort(keys(%advices))) {
 		print_header_2($category);
 		foreach my $priority (sort(keys(%{$advices{$category}}))) {
-			print color("red")     if $priority eq "urgent";
-			print color("yellow")  if $priority eq "medium";
-			print color("magenta") if $priority eq "low";
+			if ($priority eq "high") {
+        print color("red")
+      } elsif ( $priority eq "medium") {
+        print color("yellow")
+      } elsif ( $priority eq "low" ) {
+        print color("magenta")
+      }
 			foreach my $advice (@{$advices{$category}{$priority}}) {
 				print "[".uc($priority)."] $advice\n";
 				$advice_count++;

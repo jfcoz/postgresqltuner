@@ -218,7 +218,7 @@ If the PostgreSQL instance runs in an hypervisor or with SSD storage, I cannot d
 ```
 --ssd
 ```
-Allow to specify that storage is on SSD
+Allow to specify that storage is on SSD. Especially useful if PostgreSQL runs in a VM using an underlying (on the physical machine) SSD.
 
 --nocolor
 The report will not be colorized.  Useful to save it in a file by using shell redirection.

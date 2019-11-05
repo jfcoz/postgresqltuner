@@ -196,7 +196,7 @@ Le script ne détecte pas toujours parfaitement l'éventuel hyperviseur ou le st
 ```
 --ssd
 ```
-Indique que le stockage employé par PostreSQL est SSD.
+Indique que le stockage employé par PostreSQL est SSD.  Utile si PostgreSQL est dans une VM, car je ne peux en ce cas déterminer le type de stockage physique employé.
 
 ```
 --nocolor
