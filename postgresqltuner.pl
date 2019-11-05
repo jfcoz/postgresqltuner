@@ -526,9 +526,9 @@ print_header_1("General instance informations");
 	my $connection_age_average=select_one_value("select extract(epoch from avg(now()-backend_start)) as age from pg_stat_activity");
 	print_report_info("Average connection age: ".format_epoch_to_time($connection_age_average));
 	if ($connection_age_average < 1 * $min_s) {
-		print_report_bad("The average connection age is less than 1 minute.  Use a connection pooler to limit new connections/seconds");
+		print_report_bad("The average connection age is less than 1 minute.  Use a connection pooler to limit new connections/second");
 	} elsif ($connection_age_average < 10 * $min_s) {
-		print_report_warn("The average connection age is less than 10 minutes.  Use a connection pooler to limit new connections/seconds");
+		print_report_warn("The average connection age is less than 10 minutes.  Use a connection pooler to limit new connections/second");
 	}
 	# pre_auth_delay
 	my $pre_auth_delay=get_nonvolatile_setting('pre_auth_delay');
