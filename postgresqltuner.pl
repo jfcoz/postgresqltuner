@@ -281,7 +281,7 @@ print_header_1("OS information");
 			$os->{swap_total} = $os->{swap_free} + $os->{swap_used};
 		} else {
 			my $os_mem="";
-			if($os->{name} eq 'freebsd')
+			if($os->{name} eq 'freebsd' or $os->{name} eq 'midnightbsd')
 			{
 				$os_mem=os_cmd("freecolor -o");
 			}
