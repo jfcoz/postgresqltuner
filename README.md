@@ -7,7 +7,8 @@
 
 ## Demo
 
-Sample output:
+Here is a sample output:
+
 ~~~
 postgresqltuner.pl version 1.0.1
 Checking if OS commands are available on /var/run/postgresql...
@@ -120,6 +121,7 @@ Connecting to /var/run/postgresql:5432 database template1 with user postgres...
 
 It needs Perl with various modules, mainly `DBD::Pg`
 
+
 - On Debian or a derivative:
 ```
 apt-get install libdbd-pg-perl libdbi-perl perl-modules
@@ -136,6 +138,7 @@ cpan DBD-pg
 ```
 
 Download the script.  Invoke one of:
+
 ```
 wget -O postgresqltuner.pl postgresqltuner.pl
 wget -O postgresqltuner.pl https://postgresqltuner.pl
@@ -144,11 +147,13 @@ curl -Lo postgresqltuner.pl https://postgresqltuner.pl
 ```
 
 Set permissions:
+
 ```
 chmod +x postgresqltuner.pl
 ```
 
 Then invoke on the command line, as the "postgres" user, either:
+
 - By connecting to the PostgreSQL server via TCP:
 ```
 postgresqltuner.pl --host=dbhost --database=testdb --user=username --password=qwerty
@@ -198,6 +203,7 @@ Host my-database-host
 ### PostgreSQL passwords
 
 For better security use a `~/.pgpass` file containing passwords, so no password will be saved in your shell history nor visible in a process complete name. [.pgpass documentation](https://www.postgresql.org/docs/current/static/libpq-pgpass.html)
+
 ```
 host:port:database:username:password
 ```
@@ -207,6 +213,7 @@ host:port:database:username:password
 - Average number of work_mem buffer per connection:
 
 A complex query can use many work_mem buffers. You can configure the average number of work_mem buffers per connection (in percent):
+
 ```
 --wmp 300
 ```
@@ -226,6 +233,7 @@ The report will not be colorized.  Useful to save it in a file by using shell re
 ## Special FreeBSD settings
 
 FreeBSD has support for virtual memory over-commit, using vm.overcommit configuration setting.
+
 This setting is configured via /etc/sysctl.conf.
 
 Change 'vm.overcommit: 0 ' to 'vm.overcommit: 1'.
