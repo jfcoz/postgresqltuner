@@ -218,7 +218,7 @@ if ($host =~ /^\//) {
 	$os_cmd_prefix='';
 } elsif ($host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/) {
 	$os_cmd_prefix='';
-} elsif ($host =~ /^[a-zA-Z0-9.-_]+$/) {
+} elsif ($host =~ /^[a-zA-Z0-9._-]+$/) {
 	$os_cmd_prefix="ssh $ssh_opts $host ";
 } else {
 	die("Invalid host '$host'");
