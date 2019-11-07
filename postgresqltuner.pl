@@ -604,7 +604,7 @@ print_header_1("General instance informations");
 		if ($percent_postgresql_max_memory > 100) {
 			print_report_bad("PostgreSQL may try to use more than the amount of RAM.  Add more RAM or reduce PostgreSQL memory requirements");
 		} elsif ($percent_postgresql_max_memory > 80) {
-			print_report_warn("PostgreSQL may try to use more than 90% of the amount of RAM");
+			print_report_warn("PostgreSQL may try to use more than 80% of the amount of RAM");
 		} elsif ($percent_postgresql_max_memory < 60) {
 			print_report_warn("PostgreSQL will not use more than 60% of the amount of RAM.  On a dedicated host you may increase PostgreSQL shared_buffers, as it may improve performance");
 		} else {
