@@ -20,6 +20,10 @@
 # along with postgresqltuner.pl.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+#todo: for each major parameter create a code block reserved to a PG version
+#todo: thx to PG stats obtain the amount of active data, selects, updates, deletes... and mix/match it with PG parameters, esp. (WAL and cache)-related
+#todo: not vacuum'ed tables
+
 use strict;
 use warnings;
 use Config;
@@ -283,7 +287,7 @@ print_header_1("OS information");
 			$os->{swap_total} = $os->{swap_free} + $os->{swap_used};
 		} else {
 			my $os_mem="";
-			if($os->{name} eq 'freebsd' or $os->{name} eq 'midnightbsd')
+			if ($os->{name} =~ 'bsd')
 			{
 				$os_mem=os_cmd("freecolor -o");
 			}
@@ -312,7 +316,7 @@ print_header_1("OS information");
 					print_report_bad("vm.overcommit_ratio is too high, you need to keep free memory");
 				}
 			} else {
-				print_report_ok("vm.overcommit_memory is good: no memory overcommitment");
+				print_report_ok("vm.overcommit_memory is adequate: no memory overcommitment");
 			}
 		}
 
@@ -423,7 +427,7 @@ print_header_1("General instance informations");
   if (min_version('12')) {
     print_report_ok("You are using the latest PostreSQL major version ($version)");
   } elsif (min_version('11')) {
-    print_report_warn($pg_upgrade);
+    print_report_ok($pg_upgrade);
     add_advice("version","low",$pg_upgrade);
   } elsif (min_version('10')) {
     print_report_warn($pg_upgrade);
@@ -512,7 +516,7 @@ print_header_1("General instance informations");
 	if ($current_connections_percent > 70) {
 		print_report_warn("You are using more than 70% of the connections slots.  Increase max_connections to avoid saturation of connection slots");
 	} elsif ($current_connections_percent > 90) {
-		print_report_bad("You are using more than 90% of connection slots.  Increase max_connections to avoid saturation of connection slots");
+		print_report_bad("You are using more than 90% of the connection slots.  Increase max_connections to avoid saturation of connection slots");
 	}
 	# superuser_reserved_connections
 	my $superuser_reserved_connections=get_nonvolatile_setting("superuser_reserved_connections");
@@ -606,7 +610,8 @@ print_header_1("General instance informations");
 		} elsif ($percent_postgresql_max_memory > 80) {
 			print_report_warn("PostgreSQL may try to use more than 80% of the amount of RAM");
 		} elsif ($percent_postgresql_max_memory < 60) {
-			print_report_warn("PostgreSQL will not use more than 60% of the amount of RAM.  On a dedicated host you may increase PostgreSQL shared_buffers, as it may improve performance");
+#todo: shared_buffers MAX: 40% RAM
+			print_report_info("PostgreSQL will not use more than 60% of the amount of RAM.  On a dedicated host you may increase PostgreSQL shared_buffers, as it may improve performance");
 		} else {
 			print_report_ok("The potential max memory usage for PostgreSQL is adequate if the host is dedicated to it");
 		}
@@ -644,7 +649,7 @@ print_header_1("General instance informations");
     else {
       add_advice("hugepages","medium","Enable huge_pages to enhance memory allocation performance, and if necessary also enable them at OS level");
     }
-    my $os_huge=os_cmd("grep ^Huge /proc/meminfo"); # was it some useless use of cat?
+    my $os_huge=os_cmd("grep ^Huge /proc/meminfo");
 		($os->{HugePages_Total})=($os_huge =~ /HugePages_Total:\s+([0-9]+)/);
 		($os->{HugePages_Free})=($os_huge =~ /HugePages_Free:\s+([0-9]+)/);
 		($os->{Hugepagesize})=($os_huge =~ /Hugepagesize:\s+([0-9]+)/);
@@ -662,7 +667,7 @@ print_header_1("General instance informations");
 		}
 
 		if ($os->{Hugepagesize} == 2048) { # TODO: intermediate size?
-			add_advice("hugepages","low","Change Huge Pages size from 2MB to 1GB");
+			add_advice("hugepages","low","Change Huge Pages size from 2MB to 1GB if the machine is dedicated to PostgreSQL");
 		}
 	}
 }
@@ -766,7 +771,7 @@ print_header_1("General instance informations");
       print_report_warn("checkpoint_timeout / checkpoint_completion_target is probably too low");
     }
     if (min_version('9.5')) {
-      my $max_wal_size=get_nonvolatile_setting('max_wal_size');
+      my $max_wal_size=get_nonvolatile_setting('max_wal_size'); # Maximum size to let the WAL grow to between automatic WAL checkpoints
       # todo: much work to do with all those parameters and PG versions, see https://www.postgresql.org/docs/12/wal-configuration.html
       # for now let's neglect PG versions < 11 ?
     }
@@ -941,7 +946,7 @@ print_header_1("Database information for database $database");
 			@Unused_indexes=select_one_column("select relname||'.'||indexrelname from pg_stat_user_indexes where idx_scan=0 ORDER BY relname, indexrelname");
 		}
 		if (@Unused_indexes > 0) {
-			print_report_warn("Some indexes are unused since the last statistics run: " . join(',', @Unused_indexes));
+			print_report_warn(@Unused_indexes . " indexes were not used since the last statistics run");
 			add_advice("index","medium","You have unused indexes in the database since the last statistics run.  Please remove them if they are rarely or not used"); # this is especially useful if the table is frequently updated (insert/delete, or updates hitting indexed columns).  todo: checking this?
 		} else {
 			print_report_ok("No unused indexes");
@@ -956,7 +961,7 @@ print_header_1("Database information for database $database");
 	{
 		my @Default_cost_procs=select_one_column("select n.nspname||'.'||p.proname from pg_catalog.pg_proc p left join pg_catalog.pg_namespace n on n.oid = p.pronamespace where pg_catalog.pg_function_is_visible(p.oid) and n.nspname not in ('pg_catalog','information_schema','sys') and p.prorows<>1000 and p.procost<>10 and p.proname not like 'uuid_%' and p.proname != 'pg_stat_statements_reset'");
 		if (@Default_cost_procs > 0) {
-			print_report_warn("Some user procedures do not have custom cost and rows settings: " . join(',', @Default_cost_procs));
+			print_report_warn(@Default_cost_procs . " user procedures do not have custom cost and rows settings");
 			add_advice("proc","low","You have custom procedures with default cost and rows setting.  Reconfigure them with specific values to help the planner");
 		} else {
 			print_report_ok("No procedures with default costs");
@@ -1224,7 +1229,7 @@ sub print_advices {
 		}
 	}
 	if ($advice_count == 0) {
-		print color("green")."Everything is good".color("reset")."\n";
+		print color("green")."Everything is OK".color("reset")."\n";
 	}
 }
 
