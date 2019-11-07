@@ -22,7 +22,7 @@
 
 #todo: for each major parameter create a code block reserved to a PG version
 #todo: thx to PG stats obtain the amount of active data, selects, updates, deletes... and mix/match it with PG parameters, esp. (WAL and cache)-related
-#todo: not vacuum'ed tables
+#todo: not vacuum'ed tables (in need of it)
 
 use strict;
 use warnings;
@@ -76,6 +76,12 @@ my $work_mem_per_connection_percent=150;
 my @Ssh_opts=('BatchMode=yes');
 my $ssd=0;
 my $nocolor=0;
+
+# functions prototypes (the perl interpreter will enforce them)
+# todo: enforce each and every non varargs function, iff jfcoz accepts it
+sub preserve_only_digits($);
+sub min_version($);
+
 GetOptions (
 	"host=s"      => \$host,
 	"user=s"      => \$username,
@@ -97,9 +103,7 @@ GetOptions (
 $ENV{"ANSI_COLORS_DISABLED"}=1 if $nocolor;
 
 print "$script_name version $script_version\n";
-if ($help) {
-	usage(0);
-}
+usage(0) if ($help);
 
 # ssh options
 my $ssh_opts='';
@@ -238,7 +242,7 @@ if (defined(os_cmd("true"))) {
 }
 
 # Database connection
-print "Connecting to $host:$port database $database with user $username...\n";
+print "Connecting to $host:$port database $database as user '$username'...\n";
 my $dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host;port=$port;",$username,$password,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
 
 system("/usr/bin/env perl -e 'use Memoize' 1>/dev/null 2>/dev/null"); # is the Perl module 'Memoize' installed?
@@ -246,6 +250,9 @@ if ( ($? >> 8) == 0) {
   use Memoize;
 	memoize('get_nonvolatile_setting');
 }
+
+print_report_warn("I will examine the database $database.  My report would be better if you let me analyze each database")
+	if ($database =~ '^template[0-9]+$');
 
 # Collect data
 my $users=select_all_hashref("select * from pg_user","usename");
@@ -298,7 +305,8 @@ print_header_1("OS information");
 			($os->{mem_total},$os->{mem_used},$os->{mem_free},$os->{mem_shared},$os->{mem_buffers},$os->{mem_cached})=($os_mem =~ /Mem:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
 			($os->{swap_total},$os->{swap_used},$os->{swap_free})=($os_mem =~ /Swap:\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)/);
 		}
-		print_report_info("OS total memory: ".format_size($os->{mem_total}));
+		undef $os->{mem_total} if ( 0 == $os->{mem_total}); # paranoid
+		print_report_info("OS total memory: ".format_size($os->{mem_total})) if (defined($os->{mem_total}));
 
 		# Overcommit
 		if ($os->{name} eq 'darwin') {
@@ -424,15 +432,15 @@ print_header_1("General instance informations");
     add_advice("version","high","If this instance is a production server, then only use stable versions");
   }
   my $pg_upgrade="Upgrade to the latest stable PostgreSQL version";
-  if (min_version('12')) {
+  if (min_version('12.0')) {
     print_report_ok("You are using the latest PostreSQL major version ($version)");
-  } elsif (min_version('11')) {
+  } elsif (min_version('11.0')) {
     print_report_ok($pg_upgrade);
     add_advice("version","low",$pg_upgrade);
-  } elsif (min_version('10')) {
+  } elsif (min_version('10.0')) {
     print_report_warn($pg_upgrade);
     add_advice("version","low",$pg_upgrade);
-  } elsif (min_version('9')) {
+  } elsif (min_version('9.0')) {
     print_report_warn($pg_upgrade);
     add_advice("version","medium",$pg_upgrade);
   } elsif (min_version('8.1')) {
@@ -588,7 +596,7 @@ print_header_1("General instance informations");
 	print_report_info("Cumulated size of all databases: ".format_size($all_databases_size));
 	# shared_buffer usage
 	my $shared_buffers_usage=$all_databases_size/$shared_buffers;
-	if ($shared_buffers_usage < 0.7) { # todo: AFAIK shared_buffers may also contain various non-data, for example indexes, therefore the total (cumulated) database size is only one parameter.  The question now is: do shared_buffers cache anything other than tables contents, especially does it caches indices (indexes)?  I experimented while exploring thanks to pg_buffercache and it seems (PG11) that index-only access indeed load shared_buffers, however PG may be loading some/each data (corresponding to a conditon-satisfying index hit)?).  If it doesn't it may be part of the reason why maxing shared_buffers at 40% of the RAM is realistic, as (even if shared_buffer is more efficient than the kernel when it comes to caching DB data) a fair kernel buffercache containing some intensively-used indices (indexes) pages is far better than having no cached index
+	if ($shared_buffers_usage < 0.7) { # todo: may shared_buffers also contain various non-data, for example indexes?  In such a case the total (cumulated) database size is only one parameter here.  The question now is: do shared_buffers cache anything other than tables contents, especially does it caches indices (indexes)?  I experimented while exploring thanks to pg_buffercache and it seems (PG11) that index-only access indeed load shared_buffers, however PG may be loading some/each data (corresponding to a conditon-satisfying index hit)?).  If it doesn't it may be part of the reason why maxing shared_buffers at 40% of the RAM is realistic, as (even if shared_buffer is more efficient than the kernel when it comes to caching DB data) a fair kernel buffercache containing some intensively-used indices (indexes) pages is far better than having no cached index.  It seems that shared_buffers only caches data
 		print_report_warn("shared_buffer is too big for the total databases size, uselessly using memory");
 	}
   if ($effective_cache_size < $shared_buffers) {
@@ -603,6 +611,7 @@ print_header_1("General instance informations");
 	if (! defined($os->{mem_total})) {
 		print_report_unknown("OS total mem unknown: unable to analyse PostgreSQL memory usage");
 	} else {
+#todo: shared_buffers MAX: 40% RAM
 		my $percent_postgresql_max_memory=$max_memory*100/$os->{mem_total};
 		print_report_info("PostgreSQL maximum amount of memory used: ".format_percent($percent_postgresql_max_memory)." of system RAM");
 		if ($percent_postgresql_max_memory > 100) {
@@ -610,11 +619,12 @@ print_header_1("General instance informations");
 		} elsif ($percent_postgresql_max_memory > 80) {
 			print_report_warn("PostgreSQL may try to use more than 80% of the amount of RAM");
 		} elsif ($percent_postgresql_max_memory < 60) {
-#todo: shared_buffers MAX: 40% RAM
 			print_report_info("PostgreSQL will not use more than 60% of the amount of RAM.  On a dedicated host you may increase PostgreSQL shared_buffers, as it may improve performance");
 		} else {
-			print_report_ok("The potential max memory usage for PostgreSQL is adequate if the host is dedicated to it");
+			print_report_ok("The potential max memory usage of PostgreSQL is adequate if the host is dedicated to PostgreSQL");
 		}
+		print_report_warn("PostgreSQL may try to use more than 40% of the amount of RAM for shared_buffers.  This is probably too much, reduce shared_buffers")
+			if ( $shared_buffers / $os->{mem_total} > .4);
 		# track activity ratio
 		my $track_activity_ratio=$track_activity_size*100/$os->{mem_total};
 		if ($track_activity_ratio > 1) {
@@ -666,7 +676,7 @@ print_header_1("General instance informations");
 			add_advice("hugepages","medium","set vm.nr_hugepages=".int($suggesthugepages + 0.5)." in /etc/sysctl.conf and invoke  sysctl -p /etc/sysctl.conf  to reload it.  This will allocate Huge Pages (it may require a system reboot)");
 		}
 
-		if ($os->{Hugepagesize} == 2048) { # TODO: intermediate size?
+		if ($os->{Hugepagesize} == 2048) {
 			add_advice("hugepages","low","Change Huge Pages size from 2MB to 1GB if the machine is dedicated to PostgreSQL");
 		}
 	}
@@ -746,53 +756,53 @@ print_header_1("General instance informations");
   $checkpoint_warning=~s/s$//;
   my $checkpoint_timeout=get_nonvolatile_setting('checkpoint_timeout'); # unit: s
   $checkpoint_timeout=~s/s$//;
-  print_report_warn("checkpoint_warning value is 0.  This is rarely adequate") if ($checkpoint_warning == 0);
+  print_report_warn("checkpoint_warning value is 0.  This is rarely adequate") if ( 0 == $checkpoint_warning );
   if ($checkpoint_completion_target == 0) {
     print_report_bad("checkpoint_completion_target value is 0.  This is absurd");
   }
   else {
-    my $msg_CCT="checkpoint_completion_target is too low.  Some checkpoints may abruptly overload the storage with write commands for a long time, slowing running queries down.  To avoid such temporary overload you may balance checkpoint writes using a value higher than 0.8";
+    my $msg_CCT="checkpoint_completion_target is low.  Some checkpoints may abruptly overload the storage with write commands for a long time, slowing running queries down.  To avoid such temporary overload you may balance checkpoint writes using a higher value";
     if ($checkpoint_completion_target < 0.5) {
-      print_report_warn("Checkpoint_completion_target($checkpoint_completion_target) is lower than its default value (0.5)");
+      print_report_warn("Checkpoint_completion_target ($checkpoint_completion_target) is lower than its default value (0.5)");
       add_advice("checkpoint","high", $msg_CCT);
     } elsif ($checkpoint_completion_target >= 0.5 and $checkpoint_completion_target <= 0.7) {
-      print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is low");
+      print_report_warn("checkpoint_completion_target ($checkpoint_completion_target) is low");
       add_advice("checkpoint","medium", $msg_CCT);
-    } elsif ($checkpoint_completion_target >= 0.7 and $checkpoint_completion_target <= 0.9) {
-      print_report_ok("checkpoint_completion_target($checkpoint_completion_target) OK");
+    } elsif ($checkpoint_completion_target > 0.7 and $checkpoint_completion_target <= 0.9) {
+      print_report_ok("checkpoint_completion_target ($checkpoint_completion_target) OK");
     } elsif ($checkpoint_completion_target > 0.9 and $checkpoint_completion_target < 1) {
       print_report_warn("checkpoint_completion_target($checkpoint_completion_target) is too near to 1");
-      add_advice("checkpoint","medium", $msg_CCT);
+      add_advice("checkpoint","medium", "Reduce checkpoint_completion_target");
     } else {
       print_report_bad("checkpoint_completion_target too high ($checkpoint_completion_target)");
     }
-    my $checkpoint_dirty_writing_time_window=$checkpoint_timeout / $checkpoint_completion_target;
-    if ($checkpoint_dirty_writing_time_window < 10) {
-      print_report_warn("checkpoint_timeout / checkpoint_completion_target is probably too low");
-    }
-    if (min_version('9.5')) {
+    my $checkpoint_dirty_writing_time_window=$checkpoint_timeout * $checkpoint_completion_target;
+		print_report_warn("(checkpoint_timeout / checkpoint_completion_target) is probably too low")
+			if ($checkpoint_dirty_writing_time_window < 10);
+    if (min_version('9.5')) { # too much work for us, given all settings and PG versions.  For now let's neglect 'old' PG versions
       my $max_wal_size=get_nonvolatile_setting('max_wal_size'); # Maximum size to let the WAL grow to between automatic WAL checkpoints
-      # todo: much work to do with all those parameters and PG versions, see https://www.postgresql.org/docs/12/wal-configuration.html
-      # for now let's neglect PG versions < 11 ?
+			my $average_w=$max_wal_size/$checkpoint_dirty_writing_time_window;
+			my $aw_msg="Given those settings PostgreSQL may (depending on its workload) ask the kernel to write (to the storage) up to " . format_size($max_wal_size) . " in a timeframe lasting " . $checkpoint_dirty_writing_time_window . " seconds <=> " . format_size($average_w) . " bytes/second during this timeframe.  You may want to check that your storage is able to cope with this, along with all other I/O (non-writing queries, other software...) operations potentially active during this timeframe";
+			($average_w < ($ssd ? 2e8 : 3e7)) ? print_report_info($aw_msg) : print_report_warn($aw_msg);
     }
   }
 }
 
-## Disk access
+## Storage
 {
-	print_header_2("Disk access");
+	print_header_2("Storage");
 	my $fsync=get_nonvolatile_setting('fsync');
 	my $wal_sync_method=get_nonvolatile_setting('wal_sync_method');
 	if ($fsync eq 'on') {
 		print_report_ok("fsync is on");
 	} else {
 		print_report_bad("fsync is off.  You may lose data after a crash, DANGER!");
-		add_advice("checkpoint","high","set fsync to on!");
+		add_advice("storage","high","set fsync to on!");
 	}
 	if ($os->{name} eq 'darwin') {
 		if ($wal_sync_method ne 'fsync_writethrough') {
 			print_report_bad("wal_sync_method is $wal_sync_method.  Settings other than fsync_writethrough may lead to loss of data after a crash, DANGER!");
-			add_advice("storage access","high","set wal_sync_method to fsync_writethrough to on.  Otherwise, the write-back cache may prevent recovery after a crash");
+			add_advice("storage","high","set wal_sync_method to fsync_writethrough to on.  Otherwise, the write-back cache may prevent recovery after a crash");
 		} else {
 			print_report_ok("wal_sync_method is $wal_sync_method");
 		}
@@ -832,7 +842,7 @@ print_header_1("General instance informations");
 
 	# random vs seq page cost on SSD
 	if (!defined($rotational_storage)) {
-		print_report_unknown("I have no information about the rotational/SSD storage: I'm unable to check random_page_cost and seq_page_cost parameters");
+		print_report_unknown("I have no information about the rotational/SSD storage: I'm unable to check random_page_cost and seq_page_cost settings");
 	} else {
 		if ($rotational_storage == 0 and get_nonvolatile_setting('random_page_cost')>get_nonvolatile_setting('seq_page_cost')) {
 			print_report_warn("With SSD storage, set random_page_cost=seq_page_cost to help the planner prefer index scans");
@@ -913,9 +923,10 @@ print_header_1("Database information for database $database");
 		my $shared_buffer_idx_hit_rate=select_one_value("select sum(idx_blks_hit)*100/(sum(idx_blks_read)+sum(idx_blks_hit)+1) from pg_statio_all_tables ;");
 		print_report_info("shared_buffer_idx_hit_rate: ".format_percent($shared_buffer_idx_hit_rate));
 		if ($shared_buffer_idx_hit_rate > 99.99) {
-			print_report_info("This is too high.  If this PostgreSQL instance was recently used as it usually is and was not stopped since, then you may reduce shared_buffer");
+			print_report_info("This is too high.  If this PostgreSQL instance was recently used as it usually is and was not stopped since, then you may reduce shared_buffer"); # todo: even on a dedicated server, because it may benefit to the kernel's buffercache
 		} elsif ($shared_buffer_idx_hit_rate>98) {
 			print_report_ok("This is very good (if this PostgreSQL instance was recently used as it usually is, and was not stopped since)");
+			# todo: however it is not so good if PG is on a non-dedicated machine and not heavily used: it wastes RAM
 		} elsif ($shared_buffer_idx_hit_rate>90) {
 			print_report_warn("This is quite good.  Increase shared_buffer memory to increase hit rate");
 		} else {
@@ -976,27 +987,25 @@ print_advices();
 exit(0);
 
 
+sub preserve_only_digits($) {
+	my $str=shift;
+	return 0 if (!defined $str);
+	$str=~/(\d+)/; # neglect any non-num ('devel', 'RC', 'beta', 'Debian'...)
+	return (defined $1) ? $1 : 0;
+}
 
-
-sub min_version {
+sub min_version($) {
 	my $min_version=shift;
+#	die("This script has a bug.  min_version called without minor version, line ". [caller(0)]->[2]) # commented out: let's use prototypes!
+#		if (!defined $min_version);
 	my $cur_version=get_nonvolatile_setting('server_version');
-	$cur_version=~s/(devel|rc).*//; # clean devel or RC
 	my ($min_major,$min_minor)=split(/\./,$min_version);
 	my ($cur_major,$cur_minor)=split(/\./,$cur_version);
-	if ($cur_major > $min_major) {
-		return 1;
-	} elsif ($cur_major == $min_major) {
-		if (defined($min_minor)) {
-			if ($cur_minor >= $min_minor) {
-				return 1;
-			} else {
-				return 0;
-			}
-		} else {
-			return 1;
-		}
-	}
+	die "This script has a bug" if (!defined $cur_major or !defined $cur_minor);
+	$cur_major=preserve_only_digits($cur_major);
+	$cur_minor=preserve_only_digits($cur_minor);
+	return 1 if ($cur_major > $min_major);
+	return ($cur_minor >= $min_minor) if ($cur_major == $min_major);
 	return 0;
 }
 
@@ -1069,8 +1078,7 @@ sub print_report {
 	} elsif ($type eq "debug") {
 		print { $nocolor ? *STDOUT : *STDERR } color('magenta')."[DEBUG]   ".color('reset').$message."\n";
 	} else {
-		print  { $nocolor ? *STDOUT : *STDERR } "ERROR: unknown report type $type (bug in $0)\n";
-		exit 1;
+		die("This script has a bug.  Unknown report type ($type) line ". [caller(0)]->[2]);
 	}
 }
 
@@ -1097,8 +1105,8 @@ sub print_header {
 sub get_setting {
 	my $name=shift;
 	if (!defined($settings->{$name})) {
-		print  { $nocolor ? *STDOUT : *STDERR }  "ERROR: setting $name does not exist\n";
-		exit 1;
+		print { $nocolor ? *STDOUT : *STDERR } "ERROR: the setting $name does not exist in this PostgreSQL version, please upgrade\n";
+		die "Aborting";
 	} else {
     return standard_units($settings->{$name}->{setting}, $settings->{$name}->{unit});
   }
@@ -1112,11 +1120,13 @@ sub standard_units {
   my $value=shift;
   my $unit=shift;
   return $value         if !$unit;
-  return $value*1024    if $unit eq 'kB' || $unit eq 'K';
+  return $value*1024    if $unit eq 'kB' or $unit eq 'K';
   return $value*8*1024  if $unit eq '8kB';
   return $value*16*1024 if $unit eq '16kB';
-  return $value*1024*1024 if $unit eq 'M';
-  return $value*1024*1024*1024 if $unit eq 'G';
+  return $value*1024*1024 if $unit eq 'M' or $unit eq 'MB';
+  return $value*1024*1024*1024 if $unit eq 'G' or $unit eq 'GB';
+  return $value*1024*1024*1024*1024 if $unit eq 'T' or $unit eq 'TB';
+  return $value*1024*1024*1024*1024*1024 if $unit eq 'P' or $unit eq 'PB';
   return $value.'s'     if $unit eq 's';
   return $value.'ms'    if $unit eq 'ms';
 }
