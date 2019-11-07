@@ -251,8 +251,9 @@ if ( ($? >> 8) == 0) {
 	memoize('get_nonvolatile_setting');
 }
 
-print_report_warn("I will examine the database $database.  My report would be better if you let me analyze each database")
-	if ($database =~ '^template[0-9]+$');
+#todo: this will be necessary when this script will analyze DB-related activity
+#print_report_warn("I will analyze the database $database.  For more complete reports please re-run me on each database")
+#	if ($database =~ '^template[0-9]+$');
 
 # Collect data
 my $users=select_all_hashref("select * from pg_user","usename");
@@ -782,7 +783,7 @@ print_header_1("General instance informations");
     if (min_version('9.5')) { # too much work for us, given all settings and PG versions.  For now let's neglect 'old' PG versions
       my $max_wal_size=get_nonvolatile_setting('max_wal_size'); # Maximum size to let the WAL grow to between automatic WAL checkpoints
 			my $average_w=$max_wal_size/$checkpoint_dirty_writing_time_window;
-			my $aw_msg="Given those settings PostgreSQL may (depending on its workload) ask the kernel to write (to the storage) up to " . format_size($max_wal_size) . " in a timeframe lasting " . $checkpoint_dirty_writing_time_window . " seconds <=> " . format_size($average_w) . " bytes/second during this timeframe.  You may want to check that your storage is able to cope with this, along with all other I/O (non-writing queries, other software...) operations potentially active during this timeframe";
+			my $aw_msg="Given those settings PostgreSQL may (depending on its workload) ask the kernel to write (to the storage) up to " . format_size($max_wal_size) . " in a timeframe lasting " . $checkpoint_dirty_writing_time_window . " seconds <=> " . format_size($average_w) . " bytes/second during this timeframe.  You may want to check that your storage is able to cope with this, along with all other I/O (non-writing queries, other software...) operations potentially active during this timeframe.  If this seems inadequate check max_wal_size, checkpoint_timeout and checkpoint_completion_target";
 			($average_w < ($ssd ? 2e8 : 3e7)) ? print_report_info($aw_msg) : print_report_warn($aw_msg);
     }
   }
