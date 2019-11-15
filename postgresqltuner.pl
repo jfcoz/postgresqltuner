@@ -880,7 +880,7 @@ print_header_1("Database information for database $database");
 		#print_report_debug("sum_index_size: $sum_index_size");
 		my $table_percent=$sum_table_size*100/$sum_total_relation_size;
 		my $index_percent=$sum_index_size*100/$sum_total_relation_size;
-		print_report_info("Database $database indexes size: ".format_size($sum_table_size)." (".format_percent($table_percent).")");
+		print_report_info("Database $database tables size: ".format_size($sum_table_size)." (".format_percent($table_percent).")");
 		print_report_info("Database $database indexes size: ".format_size($sum_index_size)." (".format_percent($index_percent).")");
 	}
 }
