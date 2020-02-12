@@ -941,7 +941,16 @@ print_header_1("Database information for database $database");
 	print_header_2("Indexes");
 	# Invalid indexes
 	{
-		my @Invalid_indexes=select_one_column("select relname from pg_index join pg_class on indexrelid=oid where indisvalid=false");
+		my @Invalid_indexes=select_one_column("SELECT
+                                            concat(n.nspname, '.', c.relname) as index
+                                          FROM
+                                            pg_catalog.pg_class c,
+                                            pg_catalog.pg_namespace n,
+                                            pg_catalog.pg_index i
+                                          WHERE
+                                            i.indisvalid = false AND
+                                            i.indexrelid = c.oid AND
+                                            c.relnamespace = n.oid;");
 		if (@Invalid_indexes > 0) {
 			print_report_bad("List of invalid index in the database: ". join(',', @Invalid_indexes));
 			add_advice("index","high","Please check/reindex any invalid index");
