@@ -269,7 +269,7 @@ if (min_version('9.1')) {
 my %advices;
 
 if ($i_am_super) {
-	print_report_ok("The user acount used by me for reporting has superuser rights on this PostgreSQL instance");
+	print_report_ok("The user account used by me for reporting has superuser rights on this PostgreSQL instance");
 } else {
 	print_report_bad("The user account used by me for reporting does not have Postgres superuser rights.  My report will be incomplete");
 	add_advice("reporting","high","Use an account with Postgres superuser privileges to get a more complete report");
