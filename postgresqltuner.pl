@@ -297,7 +297,7 @@ print_header_1("OS information");
 			my $os_mem="";
 			if ($os->{name} =~ 'bsd')
 			{
-				$os_mem=os_cmd("freecolor -o");
+				$os_mem=os_cmd("freecolor -ob");
 			}
 			else
 			{
