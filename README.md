@@ -128,7 +128,7 @@ apt-get install libdbd-pg-perl libdbi-perl perl-modules
 ```
 - On Fedora or a derivative:
 ```
-yum install perl-DBD-Pg perl-DBI perl-Term-ANSIColor
+dnf install perl-DBD-Pg perl-DBI perl-Term-ANSIColor perl-Memoize
 ```
 
 - On MacOS with Homebrew:
