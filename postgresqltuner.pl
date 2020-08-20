@@ -76,6 +76,8 @@ my $work_mem_per_connection_percent=150;
 my @Ssh_opts=('BatchMode=yes');
 my $ssd=0;
 my $nocolor=0;
+my $skip_ssh=0;
+my $memory=undef;
 
 # functions prototypes (the perl interpreter will enforce them)
 # todo: enforce each and every non varargs function, iff jfcoz accepts it
@@ -94,11 +96,13 @@ GetOptions (
 	"help"        => \$help,
 	"wmp=i"       => \$work_mem_per_connection_percent,
 	"sshopt=s"    => \@Ssh_opts,
-            "ssd"         => \$ssd,
-            "nocolor" => \$nocolor,
-            #todo: option --dedicated, refined as a percentage (100:full dedicated, 50: half...).  Refinement: dedication per resource (storage, RAM, CPU...)
-            #todo: option --interactive
-           ) or usage(1);
+	"ssd"         => \$ssd,
+	"nocolor"     => \$nocolor,
+	"skip-ssh"    => \$skip_ssh,
+	"memory"      => \$memory,
+	#todo: option --dedicated, refined as a percentage (100:full dedicated, 50: half...).  Refinement: dedication per resource (storage, RAM, CPU...)
+	#todo: option --interactive
+	) or usage(1);
 
 $ENV{"ANSI_COLORS_DISABLED"}=1 if $nocolor;
 
@@ -220,25 +224,27 @@ sub usage {
 # OS command check
 my $os_cmd_prefix='LANG=C LC_ALL=C ';
 my $can_run_os_cmd=0;
-if ($host =~ /^\//) {
-	$os_cmd_prefix='';
-} elsif ($host =~ /^localhost$/) {
-	$os_cmd_prefix='';
-} elsif ($host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/) {
-	$os_cmd_prefix='';
-} elsif ($host =~ /^::1$/) {
-	$os_cmd_prefix='';
-} elsif ($host =~ /^[a-zA-Z0-9._-]+$/) {
-	$os_cmd_prefix="ssh $ssh_opts $host ";
-} else {
-	die("Invalid host '$host'");
-}
-if (defined(os_cmd("true"))) {
-	$can_run_os_cmd=1;
-  print_report_ok("I can invoke executables");
-} else {
-  print_report_bad("I CANNOT invoke executables, my report will be incomplete");
-	add_advice("reporting","high","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication.  This will allow it to collect more system informations");
+if (! $skip_ssh) {
+	if ($host =~ /^\//) {
+		$os_cmd_prefix='';
+	} elsif ($host =~ /^localhost$/) {
+		$os_cmd_prefix='';
+	} elsif ($host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+		$os_cmd_prefix='';
+	} elsif ($host =~ /^::1$/) {
+		$os_cmd_prefix='';
+	} elsif ($host =~ /^[a-zA-Z0-9._-]+$/) {
+		$os_cmd_prefix="ssh $ssh_opts $host ";
+	} else {
+		die("Invalid host '$host'");
+	}
+	if (defined(os_cmd("true"))) {
+		$can_run_os_cmd=1;
+	print_report_ok("I can invoke executables");
+	} else {
+	print_report_bad("I CANNOT invoke executables, my report will be incomplete");
+		add_advice("reporting","high","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication.  This will allow it to collect more system informations");
+	}
 }
 
 # Database connection
@@ -609,6 +615,11 @@ print_header_1("General instance informations");
   }
 
 	# ratio of total RAM
+	if (! defined($os->{mem_total})) {
+		if (defined($memory)) {
+			$os->{mem_total} = $memory;
+		}
+	}
 	if (! defined($os->{mem_total})) {
 		print_report_unknown("OS total mem unknown: unable to analyse PostgreSQL memory usage");
 	} else {
