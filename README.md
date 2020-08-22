@@ -130,6 +130,10 @@ apt-get install libdbd-pg-perl libdbi-perl perl-modules
 ```
 dnf install perl-DBD-Pg perl-DBI perl-Term-ANSIColor perl-Memoize
 ```
+- On Arch or a derivative:
+```
+pacman -S perl-dbi perl-dbd-pg
+```
 
 - On MacOS with Homebrew:
 ```
