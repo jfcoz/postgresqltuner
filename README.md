@@ -230,6 +230,13 @@ Allow to specify that storage is on SSD. Especially useful if PostgreSQL runs in
 --nocolor
 The report will not be colorized.  Useful to save it in a file by using shell redirection.
 
+- Skip ssh
+
+When running against an RDS, it is not possible to have a ssh connection to the instance. The option `skip-ssh` option skips the ssh connection and related checks. However, without ssh the script won't be able to search for total_memory. In this case it is possible to manually inform it by using the `memory` parameter. This way we can still have the memory ratio warnings. The memory value should be in **bytes**.
+```
+--skip-ssh --memory=8219082752
+```
+
 ## Special FreeBSD settings
 
 FreeBSD has support for virtual memory over-commit, using vm.overcommit configuration setting.
