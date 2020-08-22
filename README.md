@@ -227,8 +227,12 @@ If the PostgreSQL instance runs in an hypervisor or with SSD storage, I cannot d
 ```
 Allow to specify that storage is on SSD. Especially useful if PostgreSQL runs in a VM using an underlying (on the physical machine) SSD.
 
---nocolor
+- No color
+
 The report will not be colorized.  Useful to save it in a file by using shell redirection.
+```
+--nocolor
+```
 
 - Skip ssh
 
