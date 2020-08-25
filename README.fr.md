@@ -130,6 +130,11 @@ apt-get install libdbd-pg-perl libdbi-perl perl-modules
 ```
 yum install perl-DBD-Pg perl-DBI perl-Term-ANSIColor
 ```
+- Sur Arch et dérivées:
+```
+pacman -S perl-dbi perl-dbd-pg
+```
+
 
 - Sur MacOS avec Homebrew:
 ```
@@ -198,7 +203,17 @@ Le script ne détecte pas toujours parfaitement l'éventuel hyperviseur ou le st
 ```
 Indique que le stockage employé par PostreSQL est SSD.  Utile si PostgreSQL est dans une VM, car je ne peux en ce cas déterminer le type de stockage physique employé.
 
+- Couleur
+
 ```
 --nocolor
 ```
 Le report ne sera pas colorisé. Utile afin de le sauver dans un fichier, grâce à une redirection shell (postgresqltuner.pl>rapport_pg_$(date +%Y%m%d_%H%M%S).txt).
+
+- Désactiver SSH
+
+Lors de l'utilisation sur une instance RDS, ou équivalente, il n'est pas possible d'avoir une connection SSH. L'option `--skip-ssh` permet de désactiver les tests utilisant cette connection. Comme il n'est plus possible de connaître la RAM totale du serveur, l'option `--memory` permet de passer cette information, en **octets**.
+
+```
+--skip-ssh --memory=8219082752
+```
