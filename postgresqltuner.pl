@@ -439,20 +439,27 @@ print_header_1("General instance informations");
     add_advice("version","high","If this instance is a production server, then only use stable versions");
   }
   my $pg_upgrade="Upgrade to the latest stable PostgreSQL version";
-  if (min_version('12.0')) {
+  my $pg_supportdates="Check https://www.postgresql.org/support/versioning/ for upstream support dates";
+  if (min_version('13.0')) {
     print_report_ok("You are using the latest PostreSQL major version ($version)");
+  } elsif (min_version('12.0')) {
+    print_report_ok($pg_upgrade);
+    add_advice("version","low",$pg_upgrade);
   } elsif (min_version('11.0')) {
     print_report_ok($pg_upgrade);
     add_advice("version","low",$pg_upgrade);
   } elsif (min_version('10.0')) {
     print_report_warn($pg_upgrade);
     add_advice("version","low",$pg_upgrade);
-  } elsif (min_version('9.0')) {
+    add_advice("version","low",$pg_supportdates);
+  } elsif (min_version('9.5')) {
     print_report_warn($pg_upgrade);
     add_advice("version","medium",$pg_upgrade);
+    add_advice("version","medium",$pg_supportdates);
   } elsif (min_version('8.1')) {
-    print_report_bad("You are using PostreSQL version $version, which is very old");
+    print_report_bad("You are using PostreSQL version $version, which is unsupported upstream");
     add_advice("version","high",$pg_upgrade);
+    add_advice("version","high",$pg_supportdates);
   } else {
     print_report_bad("You are using PostreSQL version $version, which is very old and not supported by this script");
     add_advice("version","high",$pg_upgrade);
