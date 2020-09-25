@@ -124,7 +124,7 @@ It needs Perl with various modules, mainly `DBD::Pg`
 
 - On Debian or a derivative:
 ```
-apt-get install libdbd-pg-perl libdbi-perl perl-modules
+apt install libdbd-pg-perl libdbi-perl perl-modules
 ```
 - On Fedora or a derivative:
 ```
@@ -168,6 +168,15 @@ postgres$ postgresqltuner.pl --host=/var/run/postgresql  # PostgreSQL socket dir
 ```
 
 If available, postgresqltuner.pl will use standard PostgreSQL variables like `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSERNAME`, and password from the `~/.pgpass` file.
+
+### From package
+
+- On Fedora:
+```
+dnf install postgresqltuner
+```
+
+- On RHEL/CentOS it is available in EPEL.
 
 
 ### With Docker
