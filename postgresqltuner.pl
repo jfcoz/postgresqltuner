@@ -74,6 +74,7 @@ my $pgpassfile=$ENV{HOME}.'/.pgpass';
 my $help=0;
 my $work_mem_per_connection_percent=150;
 my @Ssh_opts=('BatchMode=yes');
+my $ssh_user=undef;
 my $ssd=0;
 my $nocolor=0;
 my $skip_ssh=0;
@@ -96,6 +97,7 @@ GetOptions (
 	"help"        => \$help,
 	"wmp=i"       => \$work_mem_per_connection_percent,
 	"sshopt=s"    => \@Ssh_opts,
+	"sshuser=s"   => \$ssh_user,
 	"ssd"         => \$ssd,
 	"nocolor"     => \$nocolor,
 	"skip-ssh"    => \$skip_ssh,
@@ -234,7 +236,11 @@ if (! $skip_ssh) {
 	} elsif ($host =~ /^::1$/) {
 		$os_cmd_prefix='';
 	} elsif ($host =~ /^[a-zA-Z0-9._-]+$/) {
-		$os_cmd_prefix="ssh $ssh_opts $host ";
+		if (defined($ssh_user)) {
+			$os_cmd_prefix="ssh $ssh_opts $ssh_user\@$host ";
+		} else {
+			$os_cmd_prefix="ssh $ssh_opts $host ";
+		}
 	} else {
 		die("Invalid host '$host'");
 	}
