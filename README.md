@@ -14,7 +14,7 @@ postgresqltuner.pl version 1.0.1
 Checking if OS commands are available on /var/run/postgresql...
 [OK]      I can run OS commands
 Connecting to /var/run/postgresql:5432 database template1 with user postgres...
-[OK]      The user acount used for reporting has superuser rights on this PostgreSQL instance
+[OK]      The user account used for reporting has superuser rights on this PostgreSQL instance
 =====  OS information  =====
 [INFO]    OS: linux Version: 4.9.0 Arch: x86_64-linux-gnu-thread-multi
 [INFO]    OS total memory: 94.36 GB
