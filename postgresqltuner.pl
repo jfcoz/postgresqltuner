@@ -249,7 +249,7 @@ if (! $skip_ssh) {
 		$can_run_os_cmd=1;
 		print_report_ok("I can invoke executables");
 	} else {
-	print_report_bad("I CANNOT invoke executables, my report will be incomplete");
+		print_report_bad("I CANNOT invoke executables, my report will be incomplete");
 		add_advice("reporting","high","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication.  This will allow it to collect more system informations");
 	}
 }
