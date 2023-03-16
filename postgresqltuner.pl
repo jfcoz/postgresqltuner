@@ -78,6 +78,10 @@ my $help=0;
 my $work_mem_per_connection_percent=150;
 my @Ssh_opts=('BatchMode=yes');
 my $ssh_user=undef;
+my $k8scontext=undef;
+my $k8snamespace=undef;
+my $k8spod=undef;
+my $k8scontainer=undef;
 my $ssd=0;
 my $nocolor=0;
 my $skip_ssh=0;
@@ -102,6 +106,10 @@ GetOptions (
 	"wmp=i"       => \$work_mem_per_connection_percent,
 	"sshopt=s"    => \@Ssh_opts,
 	"sshuser=s"   => \$ssh_user,
+	"k8scontext=s" => \$k8scontext,
+	"k8snamespace=s" => \$k8snamespace,
+	"k8spod=s"    => \$k8spod,
+	"k8scontainer=s" => \$k8scontainer,
 	"ssd"         => \$ssd,
 	"nocolor"     => \$nocolor,
 	"skip-ssh"    => \$skip_ssh,
@@ -217,21 +225,30 @@ sub usage {
 	print STDERR "usage: $script_name --host [ hostname | /var/run/postgresql ] [--user username] [--password password] [--database database] [--port port] [--wmp 150]\n";
 	print STDERR "\t[--sshopt=Name=Value]...\n";
 	print STDERR "\t[--ssd]\n";
+	print STDERR "\n";
 	print STDERR "... if connection parameters can be read from \$PGHOST, \$PGPORT, \$PGDATABASE, \$PGUSER, \$PGPASSWORD\n";
 	print STDERR "For security reasons, please provide any password ONLY in ~/.pgpass\n";
 	print STDERR "\thost:port:database:username:password\n";
+	print STDERR "\n";
 	print STDERR "  --wmp: average number of work_mem buffers per connection in percent (default 150)\n";
 	print STDERR "  --sshopt: pass options to ssh (example --sshopt=Port=2200)\n";
 	print STDERR "  --ssd: declare all physical storage units (used by PostgreSQL) as non rotational\n";
 	print STDERR "  --nocolor: do not colorize my report\n";
 	print STDERR "  --alldatabases: report data for all datavases except templates\n";
+	print STDERR "\n";
+	print STDERR "If your PostgreSQL cluster is running in a k8s container:\n";
+	print STDERR "  --k8scontext:   k8s Context\n";
+	print STDERR "  --k8snamespace: k8s Namespace\n";
+	print STDERR "  --k8spod:       k8s Pod\n";
+	print STDERR "  --k8scontainer: k8s Container\n";
+	print STDERR "... please make sure to have kubectl installed and included in your \$PATH.\n";
 	exit $return;
 }
 
 # OS command check
 my $os_cmd_prefix='LANG=C LC_ALL=C ';
 my $can_run_os_cmd=0;
-if (! $skip_ssh) {
+if (! $skip_ssh && !(defined $k8scontext || defined $k8snamespace || defined $k8spod || defined $k8scontainer)) {
 	if ($host =~ /^\//) {
 		$os_cmd_prefix='';
 	} elsif ($host =~ /^localhost$/) {
@@ -258,10 +275,31 @@ if (! $skip_ssh) {
 	}
 }
 
-# Gather OS information from actual target system
-$os->{name}=os_cmd('\'perl -e "use strict; use warnings; use Config; print(\$Config{osname});"\'');
-$os->{arch}=os_cmd('\'perl -e "use strict; use warnings; use Config; print(\$Config{archname});"\'');
-$os->{version}=os_cmd('\'perl -e "use strict; use warnings; use Config; print(\$Config{osvers});"\'');
+if ( (defined $k8scontext && $k8scontext ne "") || (defined $k8snamespace && $k8snamespace ne "") || (defined $k8spod && $k8spod ne "") || (defined $k8scontainer && $k8scontainer ne "") ) {
+	if ( !((defined $k8scontext && $k8scontext ne "") || (defined $k8snamespace && $k8snamespace ne "") || (defined $k8spod && $k8spod ne "") || (defined $k8scontainer && $k8scontainer ne "")) ) {
+		print STDERR "Missing a k8s parameter. Please check usage.\n";
+		usage(1);
+	}
+	
+	$os_cmd_prefix="kubectl config use-context $k8scontext >/dev/null; kubectl exec -it $k8spod -n $k8snamespace -c $k8scontainer -- ";
+
+	if (defined(os_cmd("true"))) {
+		$can_run_os_cmd=1;
+		print_report_ok("I can invoke executables");
+		$os->{name}=lc(os_cmd('uname -s'));
+		$os->{arch}=os_cmd('uname -m');
+		$os->{version}=os_cmd('uname -r');
+	} else {
+		print_report_bad("I CANNOT invoke executables, my report will be incomplete");
+		add_advice("reporting","high","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication.  This will allow it to collect more system informations");
+	}
+
+} else {
+	# Gather OS information from actual target system
+	$os->{name}=os_cmd('\'perl -e "use strict; use warnings; use Config; print(\$Config{osname});"\'');
+	$os->{arch}=os_cmd('\'perl -e "use strict; use warnings; use Config; print(\$Config{archname});"\'');
+	$os->{version}=os_cmd('\'perl -e "use strict; use warnings; use Config; print(\$Config{osvers});"\'');
+}
 
 # Database connection
 print "Connecting to $host:$port database $database as user '$username'...\n";
