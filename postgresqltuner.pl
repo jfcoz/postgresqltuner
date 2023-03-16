@@ -70,6 +70,8 @@ my $host=undef; # at declaration time assigning to undef seems useless to me (pe
 my $username=undef;
 my $password=undef;
 my $database=undef;
+my $alldatabases=0;
+my @Databases=undef;
 my $port=undef;
 my $pgpassfile=$ENV{HOME}.'/.pgpass';
 my $help=0;
@@ -94,6 +96,7 @@ GetOptions (
 	"password:s"  => \$password,
 	"db=s"        => \$database,
 	"database=s"  => \$database,
+	"alldatabases" => \$alldatabases,
 	"port=i"      => \$port,
 	"help"        => \$help,
 	"wmp=i"       => \$work_mem_per_connection_percent,
@@ -221,6 +224,7 @@ sub usage {
 	print STDERR "  --sshopt: pass options to ssh (example --sshopt=Port=2200)\n";
 	print STDERR "  --ssd: declare all physical storage units (used by PostgreSQL) as non rotational\n";
 	print STDERR "  --nocolor: do not colorize my report\n";
+	print STDERR "  --alldatabases: report data for all datavases except templates\n";
 	exit $return;
 }
 
@@ -491,7 +495,7 @@ print_header_1("General instance informations");
 ## Database count (except template)
 {
 	print_header_2("Databases");
-	my @Databases=select_one_column("SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn;");
+	@Databases=select_one_column("SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn;");
 	print_report_info("Database count (except templates): ".scalar(@Databases));
 	print_report_info("Database list (except templates): @Databases");
 }
@@ -894,133 +898,150 @@ print_header_1("General instance informations");
 
 }
 
-# Database information
-print_header_1("Database information for database $database");
+my @DatabasesToCheck;
 
-## Database size
-{
-	print_header_2("Database size");
-	my $sum_total_relation_size=select_one_value("select sum(pg_total_relation_size(schemaname||'.'||quote_ident(tablename))) from pg_tables");
-	print_report_info("Database $database total size: ".format_size($sum_total_relation_size));
-	if (min_version('9.0')) {
-		my $sum_table_size=select_one_value("select sum(pg_table_size(schemaname||'.'||quote_ident(tablename))) from pg_tables");
-		my $sum_index_size=$sum_total_relation_size-$sum_table_size;
-		#print_report_debug("sum_total_relation_size: $sum_total_relation_size");
-		#print_report_debug("sum_table_size: $sum_table_size");
-		#print_report_debug("sum_index_size: $sum_index_size");
-		my $table_percent=$sum_table_size*100/$sum_total_relation_size;
-		my $index_percent=$sum_index_size*100/$sum_total_relation_size;
-		print_report_info("Database $database tables size: ".format_size($sum_table_size)." (".format_percent($table_percent).")");
-		print_report_info("Database $database indexes size: ".format_size($sum_index_size)." (".format_percent($index_percent).")");
+if  ($alldatabases) {
+	print_report_info("Will collect information for all databases (except templates):");
+	@DatabasesToCheck = @Databases;
+	for $database (@DatabasesToCheck) {
+		print("              * $database\n");
 	}
 }
-
-## Tablespace location
-{
-	print_header_2("Tablespace location");
-	if (min_version('9.2')) {
-		my $tablespaces_in_pgdata=select_all_hashref("select spcname,pg_tablespace_location(oid) from pg_tablespace where pg_tablespace_location(oid) like (select setting from pg_settings where name='data_directory')||'/%'",'spcname');
-		if (keys(%{$tablespaces_in_pgdata}) == 0) {
-			print_report_ok("No tablespace in PGDATA");
-		} else {
-			print_report_bad("Some tablespaces defined in PGDATA: ".join(' ',keys(%{$tablespaces_in_pgdata})));
-			add_advice('tablespaces','high','Some tablespaces are in PGDATA.  Move them outside of this folder');
-		}
-	} else {
-		print_report_unknown("This check is only possible with PostgreSQL version 9.2 and above");
-	}
+else {
+	@DatabasesToCheck = $database;
 }
 
-## Shared buffer usage
-{
-	print_header_2("Shared buffer hit rate");
-	### Heap hit rate
-	{
-		my $shared_buffer_heap_hit_rate=select_one_value("select sum(heap_blks_hit)*100/(sum(heap_blks_read)+sum(heap_blks_hit)+1) from pg_statio_all_tables ;");
-		print_report_info("shared_buffer_heap_hit_rate: ".format_percent($shared_buffer_heap_hit_rate));
-	}
-	### TOAST hit rate
-	{
-		my $shared_buffer_toast_hit_rate=select_one_value("select sum(toast_blks_hit)*100/(sum(toast_blks_read)+sum(toast_blks_hit)+1) from pg_statio_all_tables ;");
-		print_report_info("shared_buffer_toast_hit_rate: ".format_percent($shared_buffer_toast_hit_rate));
-	}
-	# Tidx hit rate
-	{
-		my $shared_buffer_tidx_hit_rate=select_one_value("select sum(tidx_blks_hit)*100/(sum(tidx_blks_read)+sum(tidx_blks_hit)+1) from pg_statio_all_tables ;");
-		print_report_info("shared_buffer_tidx_hit_rate: ".format_percent($shared_buffer_tidx_hit_rate));
-	}
-	# Idx hit rate
-	{
-		my $shared_buffer_idx_hit_rate=select_one_value("select sum(idx_blks_hit)*100/(sum(idx_blks_read)+sum(idx_blks_hit)+1) from pg_statio_all_tables ;");
-		print_report_info("shared_buffer_idx_hit_rate: ".format_percent($shared_buffer_idx_hit_rate));
-		if ($shared_buffer_idx_hit_rate > 99.99) {
-			print_report_info("This is too high.  If this PostgreSQL instance was recently used as it usually is and was not stopped since, then you may reduce shared_buffer"); # todo: even on a dedicated server, because it may benefit to the kernel's buffercache
-		} elsif ($shared_buffer_idx_hit_rate>98) {
-			print_report_ok("This is very good (if this PostgreSQL instance was recently used as it usually is, and was not stopped since)");
-			# todo: however it is not so good if PG is on a non-dedicated machine and not heavily used: it wastes RAM
-		} elsif ($shared_buffer_idx_hit_rate>90) {
-			print_report_warn("This is quite good.  Increase shared_buffer memory to increase hit rate");
-		} else {
-			print_report_bad("This is too low.  Increase shared_buffer memory to increase hit rate");
-		}
-	}
-}
+for $database (@DatabasesToCheck) {
+	# Database information
+	print_header_1("Database information for database $database");
 
-## Indexes
-{
-	print_header_2("Indexes");
-	# Invalid indexes
+	$dbh = DBI->connect("dbi:Pg:dbname=$database;host=$host;port=$port;",$username,$password,{AutoCommit=>1,RaiseError=>1,PrintError=>0});
+
+	## Database size
 	{
-		my @Invalid_indexes=select_one_column("SELECT
-                                            concat(n.nspname, '.', c.relname) as index
-                                          FROM
-                                            pg_catalog.pg_class c,
-                                            pg_catalog.pg_namespace n,
-                                            pg_catalog.pg_index i
-                                          WHERE
-                                            i.indisvalid = false AND
-                                            i.indexrelid = c.oid AND
-                                            c.relnamespace = n.oid;");
-		if (@Invalid_indexes > 0) {
-			print_report_bad("List of invalid index in the database: ". join(',', @Invalid_indexes));
-			add_advice("index","high","Please check/reindex any invalid index");
-		} else {
-			print_report_ok("No invalid index");
-		}
-	}
-	# Unused indexes
-	{
-		my @Unused_indexes;
+		print_header_2("Database size");
+		my $sum_total_relation_size=select_one_value("select sum(pg_total_relation_size(schemaname||'.'||quote_ident(tablename))) from pg_tables");
+		print_report_info("Database $database total size: ".format_size($sum_total_relation_size));
 		if (min_version('9.0')) {
-			@Unused_indexes=select_one_column("select relname||'.'||indexrelname from pg_stat_user_indexes where idx_scan=0 and not exists (select 1 from pg_constraint where conindid=indexrelid) ORDER BY relname, indexrelname");
-		} else {
-			@Unused_indexes=select_one_column("select relname||'.'||indexrelname from pg_stat_user_indexes where idx_scan=0 ORDER BY relname, indexrelname");
-		}
-		if (@Unused_indexes > 0) {
-			print_report_warn(@Unused_indexes . " indexes were not used since the last statistics run");
-			add_advice("index","medium","You have unused indexes in the database since the last statistics run.  Please remove them if they are rarely or not used"); # this is especially useful if the table is frequently updated (insert/delete, or updates hitting indexed columns).  todo: checking this?
-		} else {
-			print_report_ok("No unused indexes");
+			my $sum_table_size=select_one_value("select sum(pg_table_size(schemaname||'.'||quote_ident(tablename))) from pg_tables");
+			my $sum_index_size=$sum_total_relation_size-$sum_table_size;
+			#print_report_debug("sum_total_relation_size: $sum_total_relation_size");
+			#print_report_debug("sum_table_size: $sum_table_size");
+			#print_report_debug("sum_index_size: $sum_index_size");
+			my $table_percent=$sum_table_size*100/$sum_total_relation_size;
+			my $index_percent=$sum_index_size*100/$sum_total_relation_size;
+			print_report_info("Database $database tables size: ".format_size($sum_table_size)." (".format_percent($table_percent).")");
+			print_report_info("Database $database indexes size: ".format_size($sum_index_size)." (".format_percent($index_percent).")");
 		}
 	}
-}
 
-## Procedures
-{
-	print_header_2("Procedures");
-	# Procedures with default cost
+	## Tablespace location
 	{
-		my @Default_cost_procs=select_one_column("select n.nspname||'.'||p.proname from pg_catalog.pg_proc p left join pg_catalog.pg_namespace n on n.oid = p.pronamespace where pg_catalog.pg_function_is_visible(p.oid) and n.nspname not in ('pg_catalog','information_schema','sys') and p.prorows<>1000 and p.procost<>10 and p.proname not like 'uuid_%' and p.proname != 'pg_stat_statements_reset'");
-		if (@Default_cost_procs > 0) {
-			print_report_warn(@Default_cost_procs . " user procedures do not have custom cost and rows settings");
-			add_advice("proc","low","You have custom procedures with default cost and rows setting.  Reconfigure them with specific values to help the planner");
+		print_header_2("Tablespace location");
+		if (min_version('9.2')) {
+			my $tablespaces_in_pgdata=select_all_hashref("select spcname,pg_tablespace_location(oid) from pg_tablespace where pg_tablespace_location(oid) like (select setting from pg_settings where name='data_directory')||'/%'",'spcname');
+			if (keys(%{$tablespaces_in_pgdata}) == 0) {
+				print_report_ok("No tablespace in PGDATA");
+			} else {
+				print_report_bad("Some tablespaces defined in PGDATA: ".join(' ',keys(%{$tablespaces_in_pgdata})));
+				add_advice('tablespaces','high','$database: Some tablespaces are in PGDATA.  Move them outside of this folder');
+			}
 		} else {
-			print_report_ok("No procedures with default costs");
+			print_report_unknown("This check is only possible with PostgreSQL version 9.2 and above");
 		}
 	}
-}
 
-$dbh->disconnect();
+	## Shared buffer usage
+	{
+		print_header_2("Shared buffer hit rate");
+		### Heap hit rate
+		{
+			my $shared_buffer_heap_hit_rate=select_one_value("select sum(heap_blks_hit)*100/(sum(heap_blks_read)+sum(heap_blks_hit)+1) from pg_statio_all_tables ;");
+			print_report_info("shared_buffer_heap_hit_rate: ".format_percent($shared_buffer_heap_hit_rate));
+		}
+		### TOAST hit rate
+		{
+			my $shared_buffer_toast_hit_rate=select_one_value("select sum(toast_blks_hit)*100/(sum(toast_blks_read)+sum(toast_blks_hit)+1) from pg_statio_all_tables ;");
+			print_report_info("shared_buffer_toast_hit_rate: ".format_percent($shared_buffer_toast_hit_rate));
+		}
+		# Tidx hit rate
+		{
+			my $shared_buffer_tidx_hit_rate=select_one_value("select sum(tidx_blks_hit)*100/(sum(tidx_blks_read)+sum(tidx_blks_hit)+1) from pg_statio_all_tables ;");
+			print_report_info("shared_buffer_tidx_hit_rate: ".format_percent($shared_buffer_tidx_hit_rate));
+		}
+		# Idx hit rate
+		{
+			my $shared_buffer_idx_hit_rate=select_one_value("select sum(idx_blks_hit)*100/(sum(idx_blks_read)+sum(idx_blks_hit)+1) from pg_statio_all_tables ;");
+			print_report_info("shared_buffer_idx_hit_rate: ".format_percent($shared_buffer_idx_hit_rate));
+			if ($shared_buffer_idx_hit_rate > 99.99) {
+				print_report_info("This is too high.  If this PostgreSQL instance was recently used as it usually is and was not stopped since, then you may reduce shared_buffer"); # todo: even on a dedicated server, because it may benefit to the kernel's buffercache
+			} elsif ($shared_buffer_idx_hit_rate>98) {
+				print_report_ok("This is very good (if this PostgreSQL instance was recently used as it usually is, and was not stopped since)");
+				# todo: however it is not so good if PG is on a non-dedicated machine and not heavily used: it wastes RAM
+			} elsif ($shared_buffer_idx_hit_rate>90) {
+				print_report_warn("This is quite good.  Increase shared_buffer memory to increase hit rate");
+			} else {
+				print_report_bad("This is too low.  Increase shared_buffer memory to increase hit rate");
+			}
+		}
+	}
+
+	## Indexes
+	{
+		print_header_2("Indexes");
+		# Invalid indexes
+		{
+			my @Invalid_indexes=select_one_column("SELECT
+												concat(n.nspname, '.', c.relname) as index
+											FROM
+												pg_catalog.pg_class c,
+												pg_catalog.pg_namespace n,
+												pg_catalog.pg_index i
+											WHERE
+												i.indisvalid = false AND
+												i.indexrelid = c.oid AND
+												c.relnamespace = n.oid;");
+			if (@Invalid_indexes > 0) {
+				print_report_bad("List of invalid index in the database: ". join(',', @Invalid_indexes));
+				add_advice("index","high","$database: Please check/reindex any invalid index");
+			} else {
+				print_report_ok("No invalid index");
+			}
+		}
+		# Unused indexes
+		{
+			my @Unused_indexes;
+			if (min_version('9.0')) {
+				@Unused_indexes=select_one_column("select relname||'.'||indexrelname from pg_stat_user_indexes where idx_scan=0 and not exists (select 1 from pg_constraint where conindid=indexrelid) ORDER BY relname, indexrelname");
+			} else {
+				@Unused_indexes=select_one_column("select relname||'.'||indexrelname from pg_stat_user_indexes where idx_scan=0 ORDER BY relname, indexrelname");
+			}
+			if (@Unused_indexes > 0) {
+				print_report_warn(@Unused_indexes . " indexes were not used since the last statistics run");
+				add_advice("index","medium","$database: You have unused indexes in the database since the last statistics run.  Please remove them if they are rarely or not used"); # this is especially useful if the table is frequently updated (insert/delete, or updates hitting indexed columns).  todo: checking this?
+			} else {
+				print_report_ok("No unused indexes");
+			}
+		}
+	}
+
+	## Procedures
+	{
+		print_header_2("Procedures");
+		# Procedures with default cost
+		{
+			my @Default_cost_procs=select_one_column("select n.nspname||'.'||p.proname from pg_catalog.pg_proc p left join pg_catalog.pg_namespace n on n.oid = p.pronamespace where pg_catalog.pg_function_is_visible(p.oid) and n.nspname not in ('pg_catalog','information_schema','sys') and p.prorows<>1000 and p.procost<>10 and p.proname not like 'uuid_%' and p.proname != 'pg_stat_statements_reset'");
+			if (@Default_cost_procs > 0) {
+				print_report_warn(@Default_cost_procs . " user procedures do not have custom cost and rows settings");
+				add_advice("proc","low","$database: You have custom procedures with default cost and rows setting.  Reconfigure them with specific values to help the planner");
+			} else {
+				print_report_ok("No procedures with default costs");
+			}
+		}
+	}
+
+	$dbh->disconnect();
+}
 
 print_advices();
 
