@@ -29,6 +29,7 @@ use warnings;
 use Config;
 
 my $os={};
+# Set default OS settings from local system
 $os->{name}=$Config{osname};
 $os->{arch}=$Config{archname};
 $os->{version}=$Config{osvers};
@@ -246,12 +247,17 @@ if (! $skip_ssh) {
 	}
 	if (defined(os_cmd("true"))) {
 		$can_run_os_cmd=1;
-	print_report_ok("I can invoke executables");
+		print_report_ok("I can invoke executables");
 	} else {
-	print_report_bad("I CANNOT invoke executables, my report will be incomplete");
+		print_report_bad("I CANNOT invoke executables, my report will be incomplete");
 		add_advice("reporting","high","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication.  This will allow it to collect more system informations");
 	}
 }
+
+# Gather OS information from actual target system
+$os->{name}=os_cmd('\'perl -e "use strict; use warnings; use Config; print(\$Config{osname});"\'');
+$os->{arch}=os_cmd('\'perl -e "use strict; use warnings; use Config; print(\$Config{archname});"\'');
+$os->{version}=os_cmd('\'perl -e "use strict; use warnings; use Config; print(\$Config{osvers});"\'');
 
 # Database connection
 print "Connecting to $host:$port database $database as user '$username'...\n";
