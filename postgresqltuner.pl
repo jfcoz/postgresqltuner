@@ -441,13 +441,13 @@ print_header_1("General instance informations");
   print_header_2("PostgreSQL version");
   my $version=get_nonvolatile_setting('server_version');
   if ($version=~/(devel|rc|beta)/) {
-    print_report_bad("You are using PostreSQL version $version which is a Development Snapshot, Beta or Release Candidate");
+    print_report_bad("You are using PostgreSQL version $version which is a Development Snapshot, Beta or Release Candidate");
     add_advice("version","high","If this instance is a production server, then only use stable versions");
   }
   my $pg_upgrade="Upgrade to the latest stable PostgreSQL version";
   my $pg_supportdates="Check https://www.postgresql.org/support/versioning/ for upstream support dates";
   if (min_version('13.0')) {
-    print_report_ok("You are using the latest PostreSQL major version ($version)");
+    print_report_ok("You are using the latest PostgreSQL major version ($version)");
   } elsif (min_version('12.0')) {
     print_report_ok($pg_upgrade);
     add_advice("version","low",$pg_upgrade);
@@ -463,11 +463,11 @@ print_header_1("General instance informations");
     add_advice("version","medium",$pg_upgrade);
     add_advice("version","medium",$pg_supportdates);
   } elsif (min_version('8.1')) {
-    print_report_bad("You are using PostreSQL version $version, which is unsupported upstream");
+    print_report_bad("You are using PostgreSQL version $version, which is unsupported upstream");
     add_advice("version","high",$pg_upgrade);
     add_advice("version","high",$pg_supportdates);
   } else {
-    print_report_bad("You are using PostreSQL version $version, which is very old and not supported by this script");
+    print_report_bad("You are using PostgreSQL version $version, which is very old and not supported by this script");
     add_advice("version","high",$pg_upgrade);
   }
 }
