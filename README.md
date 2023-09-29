@@ -138,7 +138,7 @@ pacman -S perl-dbi perl-dbd-pg
 - On MacOS with Homebrew:
 ```
 brew install perl
-cpan DBD-pg
+cpan DBD-Pg
 ```
 
 Download the script.  Invoke one of:
