@@ -224,33 +224,40 @@ sub usage {
 }
 
 # OS command check
-my $os_cmd_prefix='LANG=C LC_ALL=C ';
-my $can_run_os_cmd=0;
+my @os_cmd_args = ('LANG=C', 'LC_ALL=C'); 
+my $can_run_os_cmd = 0;
+
 if (! $skip_ssh) {
-	if ($host =~ /^\//) {
-		$os_cmd_prefix='';
-	} elsif ($host =~ /^localhost$/) {
-		$os_cmd_prefix='';
-	} elsif ($host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/) {
-		$os_cmd_prefix='';
-	} elsif ($host =~ /^::1$/) {
-		$os_cmd_prefix='';
-	} elsif ($host =~ /^[a-zA-Z0-9._-]+$/) {
-		if (defined($ssh_user)) {
-			$os_cmd_prefix="ssh $ssh_opts $ssh_user\@$host ";
-		} else {
-			$os_cmd_prefix="ssh $ssh_opts $host ";
-		}
-	} else {
-		die("Invalid host '$host'");
-	}
-	if (defined(os_cmd("true"))) {
-		$can_run_os_cmd=1;
-	print_report_ok("I can invoke executables");
-	} else {
-	print_report_bad("I CANNOT invoke executables, my report will be incomplete");
-		add_advice("reporting","high","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication.  This will allow it to collect more system informations");
-	}
+    if ($host =~ /^\// || 
+        $host =~ /^localhost$/ || 
+        $host =~ /^127\.[0-9]+\.[0-9]+\.[0-9]+$/ || 
+        $host =~ /^::1$/) 
+    {
+        @os_cmd_args = ('LANG=C', 'LC_ALL=C');
+    } elsif ($host =~ /^[a-zA-Z0-9._-]+$/) {
+        my @ssh_opts_list = defined($ssh_opts) ? split(/\s+/, $ssh_opts) : ();
+        
+        @os_cmd_args = ('ssh', @ssh_opts_list);
+        
+        if (defined($ssh_user)) {
+            push @os_cmd_args, "$ssh_user\@$host";
+        } else {
+            push @os_cmd_args, $host;
+        }
+
+    } else {
+        die("Invalid host '$host'");
+    }
+
+    my @test_cmd = (@os_cmd_args, 'true');
+    
+    if (defined(os_cmd(@test_cmd))) {
+        $can_run_os_cmd=1;
+    print_report_ok("I can invoke executables");
+    } else {
+    print_report_bad("I CANNOT invoke executables, my report will be incomplete");
+        add_advice("reporting","high","Please configure your .ssh/config to allow postgresqltuner.pl to connect via ssh to $host without password authentication. This will allow it to collect more system informations");
+    }
 }
 
 # Database connection
