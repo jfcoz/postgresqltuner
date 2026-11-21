@@ -3,9 +3,6 @@
 # The postgresqltuner.pl is Copyright (C) 2016-2019 Julien Francoz <julien-postgresqltuner@francoz.net>,
 # https://github.com/jfcoz/postgresqltuner
 #
-# new relase :
-#   wget postgresqltuner.pl
-#
 # postgresqltuner.pl is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
