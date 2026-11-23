@@ -23,7 +23,7 @@ Connecting to /var/run/postgresql:5432 database template1 with user postgres...
 [INFO]    Currently used I/O scheduler(s): mq-deadline
 =====  General instance informations  =====
 -----  Version  -----
-[OK]      You are using the latest major version (11.5 (Debian 11.5-1+deb10u1)) of PostreSQL
+[OK]      You are using the latest major version (11.5 (Debian 11.5-1+deb10u1)) of PostgreSQL
 -----  Uptime  -----
 [INFO]    Service uptime:  01h 41m 13s
 [WARN]    Uptime less than 1 day.  My report may be inaccurate
